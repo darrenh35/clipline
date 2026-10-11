@@ -206,7 +206,7 @@ export function VideoEditor() {
       const j = i + dir;
       if (j < 0 || j >= p.length) return p;
       const n = [...p];
-      [n[i], n[j]] = [n[j], n[i]];
+      [n[i], n[j]] = [n[j]!, n[i]!];
       return n;
     });
   };
