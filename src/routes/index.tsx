@@ -1,24 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { VideoEditor } from "@/components/editor/VideoEditor";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
-  component: Index,
+  head: () => ({
+    meta: [
+      { title: "Cutline — Simple, high-quality video editor" },
+      { name: "description", content: "Trim, split, add text and color-grade videos right in your browser. Export in HD." },
+      { property: "og:title", content: "Cutline — Simple video editor" },
+      { property: "og:description", content: "Trim, split, add text and color-grade videos in your browser." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
+  component: VideoEditor,
 });
-
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
-function Index() {
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
-  );
-}
