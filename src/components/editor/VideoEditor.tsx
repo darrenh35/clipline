@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type Clip = { id: string; name: string; url: string; duration: number; inP: number; outP: number };
-type TextItem = { id: string; text: string; start: number; end: number; size: number; y: number };
+type Transition = "none" | "fade" | "dissolve" | "slide" | "wipe" | "zoom";
+type Clip = { id: string; name: string; url: string; duration: number; inP: number; outP: number; transition?: Transition; tDur?: number };
+type TextItem = {
+  id: string; text: string; start: number; end: number; size: number; y: number;
+  font?: string; bold?: boolean; italic?: boolean; color?: string; stroke?: string; strokeW?: number; shadow?: boolean; bg?: boolean;
+};
+const FONTS = ["Space Grotesk", "Anton", "Bebas Neue", "Playfair Display", "Pacifico", "Permanent Marker", "JetBrains Mono"];
+const TRANSITIONS: Transition[] = ["none", "fade", "dissolve", "slide", "wipe", "zoom"];
+const FPS = 30;
+type Doc = { clips: Clip[]; texts: TextItem[]; grade: Grade };
 type Grade = { brightness: number; contrast: number; saturate: number };
 
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -33,6 +41,48 @@ export function VideoEditor() {
   state.current = { clips, texts, grade, time, playing, res };
   const activeId = useRef<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // undo / redo: snapshot doc changes (debounced so slider drags = one step)
+  const hist = useRef<{ past: Doc[]; future: Doc[]; cur: Doc; applying: boolean }>({
+    past: [], future: [], cur: { clips: [], texts: [], grade: { brightness: 100, contrast: 100, saturate: 100 } }, applying: false,
+  });
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const h = hist.current;
+    if (h.applying) { h.applying = false; return; }
+    const next = { clips, texts, grade };
+    const id = setTimeout(() => {
+      h.past.push(h.cur);
+      if (h.past.length > 100) h.past.shift();
+      h.cur = next;
+      h.future = [];
+      bump((x) => x + 1);
+    }, 350);
+    return () => clearTimeout(id);
+  }, [clips, texts, grade]);
+  const applyDoc = (d: Doc) => {
+    hist.current.applying = true;
+    hist.current.cur = d;
+    setClips(d.clips); setTexts(d.texts); setGrade(d.grade);
+    setSel(null);
+    bump((x) => x + 1);
+  };
+  const undo = () => {
+    const h = hist.current;
+    const live = { clips: state.current.clips, texts: state.current.texts, grade: state.current.grade };
+    if (live.clips !== h.cur.clips || live.texts !== h.cur.texts || live.grade !== h.cur.grade) { h.future.push(live); applyDoc(h.cur); return; }
+    const prev = h.past.pop();
+    if (!prev) return;
+    h.future.push(h.cur);
+    applyDoc(prev);
+  };
+  const redo = () => {
+    const h = hist.current;
+    const nxt = h.future.pop();
+    if (!nxt) return;
+    h.past.push(h.cur);
+    applyDoc(nxt);
+  };
 
   const total = clips.reduce((a, c) => a + (c.outP - c.inP), 0);
 
@@ -85,29 +135,61 @@ export function VideoEditor() {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, cv.width, cv.height);
     const loc = locate(time);
+    const paint = (v: HTMLVideoElement | undefined, alpha = 1, dx = 0, scale = 1) => {
+      if (!v || !v.videoWidth) return;
+      const s = Math.min(cv.width / v.videoWidth, cv.height / v.videoHeight) * scale;
+      const w = v.videoWidth * s, h = v.videoHeight * s;
+      ctx.globalAlpha = alpha;
+      ctx.filter = `brightness(${grade.brightness}%) contrast(${grade.contrast}%) saturate(${grade.saturate}%)`;
+      ctx.drawImage(v, (cv.width - w) / 2 + dx, (cv.height - h) / 2, w, h);
+      ctx.filter = "none";
+      ctx.globalAlpha = 1;
+    };
     if (loc) {
-      const v = videos.current.get(loc.clip.id);
-      if (v && v.videoWidth) {
-        const s = Math.min(cv.width / v.videoWidth, cv.height / v.videoHeight);
-        const w = v.videoWidth * s, h = v.videoHeight * s;
-        ctx.filter = `brightness(${grade.brightness}%) contrast(${grade.contrast}%) saturate(${grade.saturate}%)`;
-        ctx.drawImage(v, (cv.width - w) / 2, (cv.height - h) / 2, w, h);
-        ctx.filter = "none";
-      }
+      const list = state.current.clips;
+      const idx = list.indexOf(loc.clip);
+      const prevClip = idx > 0 ? list[idx - 1] : undefined;
+      const tr = loc.clip.transition ?? "none";
+      const td = Math.min(loc.clip.tDur ?? 0.6, (loc.clip.outP - loc.clip.inP) / 2);
+      const into = loc.local - loc.clip.inP;
+      const cur = videos.current.get(loc.clip.id);
+      if (prevClip && tr !== "none" && into < td) {
+        const p = into / td;
+        const prev = videos.current.get(prevClip.id);
+        const W = cv.width;
+        if (tr === "fade") { if (p < 0.5) paint(prev, 1 - p * 2); else paint(cur, p * 2 - 1); }
+        else if (tr === "dissolve") { paint(prev); paint(cur, p); }
+        else if (tr === "slide") { const e = 1 - Math.pow(1 - p, 3); paint(prev, 1, -e * W); paint(cur, 1, (1 - e) * W); }
+        else if (tr === "wipe") { paint(prev); ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W * p, cv.height); ctx.clip(); paint(cur); ctx.restore(); }
+        else if (tr === "zoom") { paint(prev, 1 - p, 0, 1 + p * 0.4); paint(cur, p, 0, 1.4 - p * 0.4); }
+      } else paint(cur);
     }
     for (const t of texts) {
       if (time < t.start || time > t.end) continue;
       const px = (t.size / 100) * cv.height;
-      ctx.font = `700 ${px}px "Space Grotesk", sans-serif`;
+      ctx.font = `${t.italic ? "italic " : ""}${t.bold === false ? 400 : 700} ${px}px "${t.font ?? "Space Grotesk"}", sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.lineWidth = px * 0.12;
-      ctx.strokeStyle = "rgba(0,0,0,0.85)";
       ctx.lineJoin = "round";
       const y = (t.y / 100) * cv.height;
-      ctx.strokeText(t.text, cv.width / 2, y);
-      ctx.fillStyle = "#fff";
+      if (t.bg) {
+        const w = ctx.measureText(t.text).width;
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.beginPath();
+        ctx.roundRect(cv.width / 2 - w / 2 - px * 0.4, y - px * 0.7, w + px * 0.8, px * 1.4, px * 0.2);
+        ctx.fill();
+      }
+      if (t.shadow !== false) { ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = px * 0.25; ctx.shadowOffsetY = px * 0.06; }
+      const sw = t.strokeW ?? 12;
+      if (sw > 0) {
+        ctx.lineWidth = (px * sw) / 100;
+        ctx.strokeStyle = t.stroke ?? "#000000";
+        ctx.strokeText(t.text, cv.width / 2, y);
+        ctx.shadowColor = "transparent";
+      }
+      ctx.fillStyle = t.color ?? "#ffffff";
       ctx.fillText(t.text, cv.width / 2, y);
+      ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
     }
   }, []);
 
@@ -116,9 +198,21 @@ export function VideoEditor() {
     const loc = locate(t);
     if (!loc) return;
     const v = videos.current.get(loc.clip.id)!;
-    if (Math.abs(v.currentTime - loc.local) > 0.05) v.currentTime = loc.local;
+    if (Math.abs(v.currentTime - loc.local) > 0.02) v.currentTime = loc.local;
     v.onseeked = () => draw();
+    const list = state.current.clips;
+    const i = list.indexOf(loc.clip);
+    if (i > 0 && (loc.clip.transition ?? "none") !== "none") {
+      const pv = videos.current.get(list[i - 1]!.id)!;
+      const end = Math.max(0, list[i - 1]!.outP - 0.04);
+      if (Math.abs(pv.currentTime - end) > 0.05) { pv.currentTime = end; pv.onseeked = () => draw(); }
+    }
   }, [draw]);
+
+  useEffect(() => {
+    const fams = new Set(texts.map((t) => t.font ?? "Space Grotesk"));
+    Promise.all([...fams].map((f) => document.fonts.load(`700 40px "${f}"`).catch(() => null))).then(() => draw());
+  }, [texts, draw]);
 
   useEffect(() => {
     if (!playing) { seekTo(time); draw(); }
@@ -143,7 +237,7 @@ export function VideoEditor() {
       if (loc) {
         const v = videos.current.get(loc.clip.id)!;
         if (activeId.current !== loc.clip.id) {
-          if (activeId.current) videos.current.get(activeId.current)?.pause();
+          if (activeId.current) { const pv = videos.current.get(activeId.current); pv?.pause(); }
           activeId.current = loc.clip.id;
           v.currentTime = loc.local;
           v.play();
@@ -212,7 +306,7 @@ export function VideoEditor() {
   };
 
   const addText = () => {
-    const t: TextItem = { id: uid(), text: "Your text", start: time, end: Math.min(time + 3, Math.max(total, 3)), size: 9, y: 80 };
+    const t: TextItem = { id: uid(), text: "Your text", start: time, end: Math.min(time + 3, Math.max(total, 3)), size: 9, y: 80, font: "Space Grotesk", bold: true, color: "#ffffff", stroke: "#000000", strokeW: 12, shadow: true };
     setTexts((p) => [...p, t]);
     setSel({ kind: "text", id: t.id });
   };
@@ -253,7 +347,22 @@ export function VideoEditor() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).tagName === "INPUT") return;
+      const tag = (e.target as HTMLElement).tagName;
+      const typing = tag === "INPUT" && (e.target as HTMLInputElement).type === "text" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && !typing) {
+        const k = e.key.toLowerCase();
+        if (k === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
+        if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); redo(); return; }
+      }
+      if (typing || tag === "SELECT") return;
+      if (mod) return;
+      if ((e.key === "," || e.key === ".") && !playing) {
+        e.preventDefault();
+        const step = e.key === "," ? -1 / FPS : 1 / FPS;
+        setTime((t) => Math.max(0, Math.min(total, Math.round((t + step) * FPS) / FPS)));
+        return;
+      }
       if (e.code === "Space") { e.preventDefault(); togglePlay(); }
       if (e.key === "s") split();
       if (e.key === "Delete" || e.key === "Backspace") del();
@@ -341,6 +450,17 @@ export function VideoEditor() {
               <label className="block">Trim end <span className="font-mono text-muted-foreground">{selClip.outP.toFixed(2)}s</span>
                 <input type="range" min={0} max={selClip.duration} step={0.01} value={selClip.outP} onChange={(e) => setClips((p) => p.map((c) => c.id === selClip.id ? { ...c, outP: Math.max(+e.target.value, c.inP + 0.1) } : c))} className="w-full" />
               </label>
+              <label className="block">Transition in
+                <select disabled={clips[0]?.id === selClip.id} value={selClip.transition ?? "none"} onChange={(e) => setClips((p) => p.map((c) => c.id === selClip.id ? { ...c, transition: e.target.value as Transition } : c))} className="mt-1 h-9 w-full rounded-md border bg-secondary px-2 capitalize disabled:opacity-40">
+                  {TRANSITIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </label>
+              {clips[0]?.id === selClip.id && <p className="text-xs text-muted-foreground">First clip has no transition.</p>}
+              {(selClip.transition ?? "none") !== "none" && (
+                <label className="block">Duration <span className="font-mono text-muted-foreground">{(selClip.tDur ?? 0.6).toFixed(1)}s</span>
+                  <input type="range" min={0.2} max={2} step={0.1} value={selClip.tDur ?? 0.6} onChange={(e) => setClips((p) => p.map((c) => c.id === selClip.id ? { ...c, tDur: +e.target.value } : c))} className="w-full" />
+                </label>
+              )}
               <div className="flex gap-2">
                 <button onClick={() => move(-1)} className="h-9 flex-1 rounded-md bg-secondary hover:bg-accent">← Move</button>
                 <button onClick={() => move(1)} className="h-9 flex-1 rounded-md bg-secondary hover:bg-accent">Move →</button>
@@ -350,6 +470,24 @@ export function VideoEditor() {
           {selText && (
             <>
               <input value={selText.text} onChange={(e) => setTexts((p) => p.map((t) => t.id === selText.id ? { ...t, text: e.target.value } : t))} className="h-9 w-full rounded-md border bg-secondary px-2" />
+              <label className="block">Font
+                <select value={selText.font ?? "Space Grotesk"} onChange={(e) => setTexts((p) => p.map((t) => t.id === selText.id ? { ...t, font: e.target.value } : t))} className="mt-1 h-9 w-full rounded-md border bg-secondary px-2" style={{ fontFamily: selText.font }}>
+                  {FONTS.map((f) => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}
+                </select>
+              </label>
+              <div className="flex gap-1">
+                {([["bold", "B", true], ["italic", "I", false], ["shadow", "Shadow", true], ["bg", "Box", false]] as const).map(([k, l, def]) => {
+                  const on = selText[k] ?? def;
+                  return <button key={k} onClick={() => setTexts((p) => p.map((t) => t.id === selText.id ? { ...t, [k]: !on } : t))} className={`h-8 flex-1 rounded-md text-xs ${on ? "bg-primary text-primary-foreground" : "bg-secondary hover:bg-accent"}`}>{l}</button>;
+                })}
+              </div>
+              <div className="flex gap-2">
+                <label className="flex-1">Fill<input type="color" value={selText.color ?? "#ffffff"} onChange={(e) => setTexts((p) => p.map((t) => t.id === selText.id ? { ...t, color: e.target.value } : t))} className="mt-1 h-9 w-full cursor-pointer rounded-md border bg-secondary" /></label>
+                <label className="flex-1">Stroke<input type="color" value={selText.stroke ?? "#000000"} onChange={(e) => setTexts((p) => p.map((t) => t.id === selText.id ? { ...t, stroke: e.target.value } : t))} className="mt-1 h-9 w-full cursor-pointer rounded-md border bg-secondary" /></label>
+              </div>
+              <label className="block">Stroke width
+                <input type="range" min={0} max={40} value={selText.strokeW ?? 12} onChange={(e) => setTexts((p) => p.map((t) => t.id === selText.id ? { ...t, strokeW: +e.target.value } : t))} className="w-full" />
+              </label>
               {([["size", "Size", 3, 25], ["y", "Position", 5, 95]] as const).map(([k, l, mn, mx]) => (
                 <label key={k} className="block">{l}
                   <input type="range" min={mn} max={mx} value={selText[k]} onChange={(e) => setTexts((p) => p.map((t) => t.id === selText.id ? { ...t, [k]: +e.target.value } : t))} className="w-full" />
@@ -367,6 +505,8 @@ export function VideoEditor() {
 
       <section className="h-56 shrink-0 border-t">
         <div className="flex h-11 items-center gap-2 border-b px-4">
+          <button onClick={undo} disabled={!hist.current.past.length && !(clips !== hist.current.cur.clips || texts !== hist.current.cur.texts || grade !== hist.current.cur.grade)} className="h-8 rounded-md bg-secondary px-3 text-sm hover:bg-accent disabled:opacity-40" title="Undo (Ctrl+Z)">↶</button>
+          <button onClick={redo} disabled={!hist.current.future.length} className="h-8 rounded-md bg-secondary px-3 text-sm hover:bg-accent disabled:opacity-40" title="Redo (Ctrl+Shift+Z / Ctrl+Y)">↷</button>
           <button onClick={split} disabled={!clips.length} className="h-8 rounded-md bg-secondary px-3 text-sm hover:bg-accent disabled:opacity-40">✂ Split (S)</button>
           <button onClick={del} disabled={!sel} className="h-8 rounded-md bg-secondary px-3 text-sm hover:bg-accent disabled:opacity-40">Delete</button>
           <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
