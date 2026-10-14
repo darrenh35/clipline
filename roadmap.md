@@ -1,5 +1,5 @@
 # Current tasks
-- [ ] Rename the editor Clipline, preserving old project compatibility.
-- [ ] Add selectable keyframe easing.
-- [ ] Add direct preview selection, movement, and rotation.
-- [ ] Verify editing with real media and saved projects.
+- [x] Rename the editor Clipline, preserving old project compatibility.
+- [x] Add selectable keyframe easing.
+- [x] Add direct preview selection, movement, and rotation.
+- [x] Verify editing with real media and saved projects.
