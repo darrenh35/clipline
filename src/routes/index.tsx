@@ -4,9 +4,9 @@ import { VideoEditor } from "@/components/editor/VideoEditor";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Cutline — Simple, high-quality video editor" },
+      { title: "Clipline — Simple, high-quality video editor" },
       { name: "description", content: "Trim, split, add text and color-grade videos right in your browser. Export in HD." },
-      { property: "og:title", content: "Cutline — Simple video editor" },
+      { property: "og:title", content: "Clipline — Simple video editor" },
       { property: "og:description", content: "Trim, split, add text and color-grade videos in your browser." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

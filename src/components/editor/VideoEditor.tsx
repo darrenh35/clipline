@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Search, Play, Pause, Undo2, Redo2, Scissors, Trash2, Upload, Type, FolderOpen, Save, Film, Image as ImageIcon, Music,
+  Search, Play, Pause, Undo2, Redo2, Scissors, Trash2, Upload, Type, FolderOpen, Save, RotateCw, Film, Image as ImageIcon, Music,
 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { EASINGS, interpolate, type Easing, type Keyframe } from "./keyframe-easing";
 
 type Kind = "video" | "image" | "audio" | "text";
 type Trans = "none" | "fade" | "slide" | "wipe" | "zoom" | "rise";
-type KF = { t: number; v: number };
+type KF = Keyframe;
 type TextStyle = { text: string; size: number; font: string; bold: boolean; italic: boolean; color: string; stroke: string; strokeW: number; shadow: boolean; bg: boolean };
 type Item = {
   id: string; kind: Kind; track: number; start: number; dur: number; name: string; mediaId?: string;
@@ -60,19 +63,7 @@ const isMedia = (it: Item) => it.kind === "video" || it.kind === "audio";
 const shiftKf = (kf: Record<string, KF[]>, d: number, k = 1) =>
   Object.fromEntries(Object.entries(kf).map(([p, ks]) => [p, ks.map((x) => ({ ...x, t: x.t * k + d }))]));
 const val = (it: Item, p: Prop, t: number) => {
-  const ks = it.kf[p];
-  if (!ks?.length) return it.base[p] ?? PROPS[p].def;
-  const r = t - it.start;
-  if (r <= ks[0]!.t) return ks[0]!.v;
-  for (let i = 1; i < ks.length; i++) {
-    const b = ks[i]!;
-    if (r <= b.t) {
-      const a = ks[i - 1]!;
-      const q = (r - a.t) / (b.t - a.t || 1);
-      return a.v + (b.v - a.v) * q * q * (3 - 2 * q);
-    }
-  }
-  return ks[ks.length - 1]!.v;
+  return interpolate(it.kf[p] ?? [], t - it.start, it.base[p] ?? PROPS[p].def);
 };
 const transP = (it: Item, t: number) => ({
   pin: it.tIn === "none" ? 1 : clamp((t - it.start) / it.tInD, 0, 1),
@@ -115,6 +106,18 @@ export function VideoEditor() {
 
   const total = items.reduce((a, i) => Math.max(a, i.start + i.dur), 0);
   const tracks = trackCount(items);
+
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageSize, setStageSize] = useState({ w: 640, h: 360 });
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setStageSize({ w: Math.max(1, entry.contentRect.width - 64), h: Math.max(1, entry.contentRect.height - 64) });
+    });
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -423,8 +426,10 @@ export function VideoEditor() {
       const ks = i.kf[p];
       if (!ks?.length) return { ...i, base: { ...i.base, [p]: v } };
       const r = clamp(S.current.time - i.start, 0, i.dur);
+      const existing = ks.find((k) => Math.abs(k.t - r) <= 0.5 / FPS);
+      const previous = ks.filter((k) => k.t <= r).at(-1);
       const rest = ks.filter((k) => Math.abs(k.t - r) > 0.5 / FPS);
-      return { ...i, kf: { ...i.kf, [p]: [...rest, { t: r, v }].sort((a, b) => a.t - b.t) } };
+      return { ...i, kf: { ...i.kf, [p]: [...rest, { t: r, v, easing: existing?.easing ?? previous?.easing ?? "linear" }].sort((a, b) => a.t - b.t) } };
     });
   };
   const toggleKf = (it: Item, p: Prop) => {
@@ -437,7 +442,7 @@ export function VideoEditor() {
         const rest = ks.filter((k) => Math.abs(k.t - r) > 0.5 / FPS);
         return { ...i, kf: { ...i.kf, [p]: rest }, base: rest.length ? i.base : { ...i.base, [p]: cur } };
       }
-      return { ...i, kf: { ...i.kf, [p]: [...ks, { t: r, v: cur }].sort((a, b) => a.t - b.t) } };
+      return { ...i, kf: { ...i.kf, [p]: [...ks, { t: r, v: cur, easing: ks.filter((k) => k.t <= r).at(-1)?.easing ?? "linear" }].sort((a, b) => a.t - b.t) } };
     });
   };
   const setSpeed = (it: Item, s: number) =>
@@ -515,29 +520,85 @@ export function VideoEditor() {
     window.addEventListener("mouseup", up);
   };
 
-  // drag selected item on the preview to move it
-  const canvasDrag = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const it = S.current.items.find((i) => i.id === sel);
-    const t = S.current.time;
-    if (!it || it.kind === "audio" || t < it.start || t >= it.start + it.dur) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x0 = e.clientX, y0 = e.clientY;
-    const bx = val(it, "x", t), by = val(it, "y", t);
+  // Preview bounds use the same source fit and transform as the rendered media.
+  const previewBounds = (it: Item) => {
+    const cv = canvasRef.current;
+    if (!cv) return null;
+    let w = cv.width, h = cv.height;
+    if (it.style) {
+      const ctx = cv.getContext("2d");
+      if (!ctx) return null;
+      const st = it.style, px = st.size / 100 * cv.height;
+      ctx.save();
+      ctx.font = `${st.italic ? "italic " : ""}${st.bold ? 700 : 400} ${px}px "${st.font}", sans-serif`;
+      w = ctx.measureText(st.text).width + px * 0.8;
+      h = px * 1.4;
+      ctx.restore();
+    } else {
+      const img = it.mediaId ? imgs.current.get(it.mediaId) : undefined;
+      const video = els.current.get(it.id)?.el as HTMLVideoElement | undefined;
+      const sw = img?.naturalWidth || video?.videoWidth || w;
+      const sh = img?.naturalHeight || video?.videoHeight || h;
+      const fit = Math.min(w / sw, h / sh);
+      w = sw * fit; h = sh * fit;
+    }
+    const t = S.current.time, scale = val(it, "scale", t) / 100;
+    return { x: val(it, "x", t) / 100 * cv.width, y: val(it, "y", t) / 100 * cv.height,
+      w: w * scale, h: h * scale, rotation: val(it, "rotation", t) };
+  };
+
+  const previewDrag = (e: React.PointerEvent, mode: "move" | "rotate") => {
+    if (e.button !== 0 || S.current.playing || exporting !== null) return;
+    const cv = canvasRef.current;
+    if (!cv) return;
+    e.preventDefault();
+    const rect = cv.getBoundingClientRect(), t = S.current.time;
+    const x = (e.clientX - rect.left) / rect.width * cv.width;
+    const y = (e.clientY - rect.top) / rect.height * cv.height;
+    const active = S.current.items.filter((i) => i.kind !== "audio" && t >= i.start && t < i.start + i.dur).sort((a, b) => a.track - b.track);
+    const it = mode === "rotate" ? active.find((i) => i.id === sel) : active.find((i) => {
+      const b = previewBounds(i);
+      if (!b) return false;
+      const angle = b.rotation * Math.PI / 180, dx = x - b.x, dy = y - b.y;
+      return Math.abs(dx * Math.cos(angle) + dy * Math.sin(angle)) <= b.w / 2
+        && Math.abs(-dx * Math.sin(angle) + dy * Math.cos(angle)) <= b.h / 2;
+    });
+    if (!it) { setSel(null); return; }
+    setSel(it.id);
+    const b = previewBounds(it);
+    if (!b) return;
+    const x0 = e.clientX, y0 = e.clientY, bx = val(it, "x", t), by = val(it, "y", t);
+    const cx = rect.left + b.x / cv.width * rect.width, cy = rect.top + b.y / cv.height * rect.height;
+    let lastAngle = Math.atan2(e.clientY - cy, e.clientX - cx), rotation = b.rotation;
+    let moved = false;
     dragging.current = true;
-    const mv = (ev: MouseEvent) => {
-      const cur = S.current.items.find((i) => i.id === it.id);
-      if (!cur) return;
-      setProp(cur, "x", Math.round((bx + ((ev.clientX - x0) / rect.width) * 100) * 10) / 10);
-      setProp({ ...cur }, "y", Math.round((by + ((ev.clientY - y0) / rect.height) * 100) * 10) / 10);
+    const mv = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return;
+      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 2) return;
+      moved = true;
+      if (mode === "rotate") {
+        const angle = Math.atan2(ev.clientY - cy, ev.clientX - cx);
+        const delta = Math.atan2(Math.sin(angle - lastAngle), Math.cos(angle - lastAngle));
+        rotation += delta * 180 / Math.PI;
+        lastAngle = angle;
+        const normalized = ((rotation + 180) % 360 + 360) % 360 - 180;
+        setProp(it, "rotation", ev.shiftKey ? Math.round(normalized / 15) * 15 : Math.round(normalized));
+      } else {
+        setProp(it, "x", +(bx + (ev.clientX - x0) / rect.width * 100).toFixed(1));
+        setProp(it, "y", +(by + (ev.clientY - y0) / rect.height * 100).toFixed(1));
+      }
     };
-    const up = () => {
-      window.removeEventListener("mousemove", mv);
-      window.removeEventListener("mouseup", up);
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return;
+      window.removeEventListener("pointermove", mv);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       dragging.current = false;
-      setDoc((d) => ({ ...d }));
+      if (moved) setDoc((d) => ({ ...d }));
     };
-    window.addEventListener("mousemove", mv);
-    window.addEventListener("mouseup", up);
+    window.addEventListener("pointermove", mv);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
 
   // ---------- save / open ----------
@@ -547,13 +608,13 @@ export function VideoEditor() {
     const media = Object.fromEntries(Object.entries(d.media).filter(([id]) => used.has(id) && blobs.current.has(id)));
     const ids = Object.keys(media);
     const files = ids.map((id) => ({ id, size: blobs.current.get(id)!.size }));
-    const json = new TextEncoder().encode(JSON.stringify({ app: "cutline", v: 1, doc: { ...d, media }, files }));
+    const json = new TextEncoder().encode(JSON.stringify({ app: "clipline", v: 1, doc: { ...d, media }, files }));
     const len = new Uint8Array(4);
     new DataView(len.buffer).setUint32(0, json.length, true);
     const blob = new Blob([len, json, ...ids.map((id) => blobs.current.get(id)!)], { type: "application/octet-stream" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "project.cutline";
+    a.download = "project.clipline";
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     saved.current = d;
@@ -566,7 +627,7 @@ export function VideoEditor() {
     try {
       const len = new DataView(await f.slice(0, 4).arrayBuffer()).getUint32(0, true);
       const head = JSON.parse(await f.slice(4, 4 + len).text()) as { app: string; doc: Doc; files: { id: string; size: number }[] };
-      if (head.app !== "cutline") throw new Error("bad file");
+      if (head.app !== "clipline" && head.app !== "cutline") throw new Error("bad file");
       setPlaying(false);
       els.current.forEach((e) => { e.el.pause(); e.el.removeAttribute("src"); e.el.load(); });
       els.current.clear();
@@ -591,7 +652,7 @@ export function VideoEditor() {
       setSel(null);
       setT(0);
     } catch {
-      alert("That file isn't a Cutline project.");
+      alert("That file isn't a Clipline project.");
     }
   };
 
@@ -624,7 +685,7 @@ export function VideoEditor() {
     const blob = new Blob(chunks, { type: mime });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `cutline-export.${mime.includes("mp4") ? "mp4" : "webm"}`;
+    a.download = `clipline-export.${mime.includes("mp4") ? "mp4" : "webm"}`;
     a.click();
     setExporting(null);
   };
@@ -674,6 +735,10 @@ export function VideoEditor() {
   // ---------- render ----------
   const selItem = items.find((i) => i.id === sel);
   const [W, H] = RES[res];
+  const selection = selItem && selItem.kind !== "audio" && time >= selItem.start && time < selItem.start + selItem.dur && !playing && exporting === null ? previewBounds(selItem) : null;
+  const previewWidth = Math.min(stageSize.w, stageSize.h * W / H);
+  const rotateAngle = (selection?.rotation ?? 0) * Math.PI / 180;
+  const handleDistance = selection ? selection.h / 2 + 24 * W / previewWidth : 0;
   const timelineLen = Math.max(total + 20, 60);
   const step = STEPS.find((s) => s * zoom >= 70) ?? 600;
   const minor = step / (step === 0.25 ? 5 : 5);
@@ -691,12 +756,12 @@ export function VideoEditor() {
     <div className="flex h-screen flex-col overflow-hidden text-foreground">
       <header className="glass flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <div className="mr-3 flex items-center gap-2 text-lg font-bold tracking-tight">
-          <span className="inline-block h-3 w-3 rounded-sm bg-primary" /> Cutline
+          <span className="inline-block h-3 w-3 rounded-sm bg-primary" /> Clipline
         </div>
         <button onClick={() => fileInput.current?.click()} className={btn} title="Import video, photos or audio"><Upload className="h-4 w-4" /><span className="hidden md:inline">Import</span></button>
         <button onClick={addText} className={btn} title="Add text"><Type className="h-4 w-4" /><span className="hidden md:inline">Text</span></button>
         <input ref={fileInput} type="file" accept="video/*,image/*,audio/*" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-        <input ref={projInput} type="file" accept=".cutline" hidden onChange={(e) => { openProject(e.target.files?.[0]); e.target.value = ""; }} />
+        <input ref={projInput} type="file" accept=".clipline,.cutline" hidden onChange={(e) => { openProject(e.target.files?.[0]); e.target.value = ""; }} />
         <div className="ml-auto flex items-center gap-2">
           <button onClick={() => projInput.current?.click()} className={btn} title="Open project (Ctrl+O)"><FolderOpen className="h-4 w-4" /><span className="hidden md:inline">Open</span></button>
           <button onClick={saveProject} disabled={!items.length} className={btn} title="Save project (Ctrl+S)"><Save className="h-4 w-4" /><span className="hidden md:inline">Save</span>{items.length > 0 && doc !== saved.current && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}</button>
@@ -711,10 +776,23 @@ export function VideoEditor() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <main className="flex min-w-0 flex-1 items-center justify-center bg-stage/60 p-4">
-          <div className="relative flex h-full w-full items-center justify-center">
-            <canvas ref={canvasRef} width={W} height={H} onMouseDown={canvasDrag}
-              className={`h-auto max-h-full w-auto max-w-full rounded-md shadow-2xl ${selItem && selItem.kind !== "audio" ? "cursor-move" : ""}`} />
+        <main ref={stageRef} className="flex min-w-0 flex-1 items-center justify-center bg-stage/60 p-4">
+          <div className="relative shrink-0" style={{ width: previewWidth, aspectRatio: `${W} / ${H}` }}>
+            <canvas ref={canvasRef} width={W} height={H} onPointerDown={(e) => previewDrag(e, "move")}
+              aria-label="Video preview" className="block h-full w-full touch-none rounded-md shadow-2xl cursor-move" />
+            {selection && <>
+              <svg viewBox={`0 0 ${W} ${H}`} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible text-primary" aria-hidden="true">
+                <g transform={`translate(${selection.x} ${selection.y}) rotate(${selection.rotation})`}>
+                  <rect x={-selection.w / 2} y={-selection.h / 2} width={selection.w} height={selection.h} fill="none" stroke="currentColor" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+                  <line x1={0} x2={0} y1={selection.h / 2} y2={handleDistance} stroke="currentColor" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+                </g>
+              </svg>
+              <Button size="icon" variant="outline" aria-label="Rotate selection" title="Drag to rotate" onPointerDown={(e) => previewDrag(e, "rotate")}
+                className="absolute z-10 h-7 w-7 -translate-x-1/2 -translate-y-1/2 touch-none rounded-full border-primary bg-background text-primary cursor-grab active:cursor-grabbing"
+                style={{ left: `${(selection.x - Math.sin(rotateAngle) * handleDistance) / W * 100}%`, top: `${(selection.y + Math.cos(rotateAngle) * handleDistance) / H * 100}%` }}>
+                <RotateCw />
+              </Button>
+            </>}
             {!items.length && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-center text-sm text-muted-foreground">Import video, photos or audio to start editing</div>
             )}
@@ -794,6 +872,7 @@ export function VideoEditor() {
                   const r = time - selItem.start;
                   const inRange = r >= 0 && r <= selItem.dur;
                   const on = ks.some((k) => Math.abs(k.t - r) <= 0.5 / FPS);
+                  const outgoing = ks.filter((k) => k.t <= r + 0.5 / FPS).at(-1) ?? ks[0];
                   const v = val(selItem, p, time);
                   return (
                     <div key={p}>
@@ -801,11 +880,21 @@ export function VideoEditor() {
                         <span>{d.label}</span>
                         <span className="flex items-center gap-1.5">
                           <span className="font-mono text-xs text-muted-foreground">{Math.round(v)}{d.unit}</span>
-                          <button onClick={() => toggleKf(selItem, p)} disabled={!inRange} title={on ? "Remove keyframe" : "Add keyframe here"}
+                          <button onClick={() => toggleKf(selItem, p)} disabled={!inRange} aria-label={`${on ? "Remove" : "Add"} ${d.label} keyframe`} title={on ? "Remove keyframe" : "Add keyframe here"}
                             className={`w-4 text-sm leading-none disabled:opacity-30 ${on ? "text-primary" : ks.length ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{on ? "◆" : "◇"}</button>
                         </span>
                       </div>
-                      <input type="range" min={d.min} max={d.max} step={p === "x" || p === "y" ? 0.5 : 1} value={v} onChange={(e) => setProp(selItem, p, +e.target.value)} className="w-full" />
+                      <input aria-label={d.label} type="range" min={d.min} max={d.max} step={p === "x" || p === "y" ? 0.5 : 1} value={v} onChange={(e) => setProp(selItem, p, +e.target.value)} className="w-full" />
+                      {outgoing && <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                        Easing
+                        <select aria-label={`${d.label} easing`} value={outgoing.easing ?? "smooth"} className="h-7 min-w-0 flex-1 rounded-md border bg-secondary px-1 text-foreground"
+                          onChange={(e) => {
+                            const easing = e.target.value as Easing;
+                            updItem(selItem.id, (i) => ({ ...i, kf: { ...i.kf, [p]: (i.kf[p] ?? []).map((k) => k.t === outgoing.t ? { ...k, easing } : k) } }));
+                          }}>
+                          {EASINGS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </label>}
                     </div>
                   );
                 })}
