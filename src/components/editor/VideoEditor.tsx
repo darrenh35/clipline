@@ -127,6 +127,7 @@ export function VideoEditor() {
   const imgs = useRef(new Map<string, HTMLImageElement>());
   const urls = useRef(new Map<string, string>());
   const blobs = useRef(new Map<string, Blob>());
+  const frames = useRef(new Map<string, { cv: HTMLCanvasElement; ctx: CanvasRenderingContext2D }>());
   const audioCtx = useRef<AudioContext | null>(null);
   const audioDest = useRef<MediaStreamAudioDestinationNode | null>(null);
   const dragging = useRef(false);
@@ -233,7 +234,20 @@ export function VideoEditor() {
           if (img?.naturalWidth) { src = img; w = img.naturalWidth; h = img.naturalHeight; }
         } else {
           const v = els.current.get(it.id)?.el as HTMLVideoElement | undefined;
-          if (v?.videoWidth && v.readyState >= 2) { src = v; w = v.videoWidth; h = v.videoHeight; }
+          if (v?.videoWidth && v.readyState >= 2) {
+            src = v; w = v.videoWidth; h = v.videoHeight;
+            let f = frames.current.get(it.id);
+            if (!f) {
+              const cv = document.createElement("canvas");
+              f = { cv, ctx: cv.getContext("2d")! };
+              frames.current.set(it.id, f);
+            }
+            if (f.cv.width !== w || f.cv.height !== h) { f.cv.width = w; f.cv.height = h; }
+            f.ctx.drawImage(v, 0, 0);
+          } else {
+            const f = frames.current.get(it.id);
+            if (f && f.cv.width) { src = f.cv; w = f.cv.width; h = f.cv.height; }
+          }
         }
         if (src) {
           const f = Math.min(W / w, H / h);
