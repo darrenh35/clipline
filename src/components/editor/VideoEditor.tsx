@@ -276,8 +276,8 @@ export function VideoEditor() {
     src.connect(gain);
     gain.connect(ctx.destination);
     gain.connect(audioDest.current!);
-    el.addEventListener("seeked", redraw);
-    el.addEventListener("loadeddata", redraw);
+    el.addEventListener("seeked", () => draw());
+    el.addEventListener("loadeddata", () => draw());
     const e = { el, gain };
     els.current.set(it.id, e);
     return e;
@@ -303,8 +303,10 @@ export function VideoEditor() {
       e.gain.gain.value = Math.max(0, (val(it, "volume", t) / 100) * Math.min(pin, pout));
       if (e.el.playbackRate !== it.speed) e.el.playbackRate = it.speed;
       if (play) {
-        if (e.el.paused) { e.el.currentTime = local; e.el.play().catch(() => {}); }
-        else if (Math.abs(e.el.currentTime - local) > 0.3) e.el.currentTime = local;
+        if (e.el.paused) {
+          if (Math.abs(e.el.currentTime - local) > 0.15) e.el.currentTime = local;
+          e.el.play().catch(() => {});
+        } else if (Math.abs(e.el.currentTime - local) > 0.3) e.el.currentTime = local;
       } else {
         if (!e.el.paused) e.el.pause();
         if (Math.abs(e.el.currentTime - local) > 0.01) e.el.currentTime = local;
