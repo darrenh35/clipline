@@ -368,6 +368,7 @@ export function VideoEditor() {
     const list = [...S.current.items];
     const media = { ...S.current.doc.media };
     let last: string | null = null;
+    const skipped: string[] = [];
     for (const f of Array.from(files)) {
       const kind = detectKind(f.name, f.type);
       if (!kind) { skipped.push(f.name); continue; }
