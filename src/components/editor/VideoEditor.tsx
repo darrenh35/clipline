@@ -369,8 +369,8 @@ export function VideoEditor() {
     const media = { ...S.current.doc.media };
     let last: string | null = null;
     for (const f of Array.from(files)) {
-      const kind = f.type.startsWith("video") ? "video" : f.type.startsWith("image") ? "image" : f.type.startsWith("audio") ? "audio" : null;
-      if (!kind) continue;
+      const kind = detectKind(f.name, f.type);
+      if (!kind) { skipped.push(f.name); continue; }
       const id = uid();
       const url = URL.createObjectURL(f);
       let duration = 5;
@@ -379,13 +379,15 @@ export function VideoEditor() {
       } else {
         const el = document.createElement(kind === "audio" ? "audio" : "video");
         el.preload = "metadata";
+        el.muted = true;
         el.src = url;
-        duration = await new Promise<number>((r) => { el.onloadedmetadata = () => r(el.duration); el.onerror = () => r(0); });
-        if (!isFinite(duration) || duration <= 0) { URL.revokeObjectURL(url); continue; }
+        duration = await resolveDuration(el);
+        el.removeAttribute("src"); el.load();
+        if (!isFinite(duration) || duration <= 0) { URL.revokeObjectURL(url); skipped.push(f.name); continue; }
       }
       urls.current.set(id, url);
       blobs.current.set(id, f);
-      media[id] = { id, kind, name: f.name, duration, type: f.type };
+      media[id] = { id, kind, name: f.name, duration, type: guessMime(f.name, f.type) };
       const n = trackCount(list);
       let track = n, start = 0;
       if (kind === "audio") {
