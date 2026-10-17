@@ -690,7 +690,8 @@ export function VideoEditor() {
     ensureAudio();
     const stream = cv.captureStream(30);
     audioDest.current!.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
-    const mime = ["video/mp4;codecs=avc1,mp4a", "video/webm;codecs=vp9,opus", "video/webm"].find((m) => MediaRecorder.isTypeSupported(m))!;
+    const mime = pickExportMime(fmtSel, (m) => MediaRecorder.isTypeSupported(m)) ?? pickExportMime("auto", (m) => MediaRecorder.isTypeSupported(m));
+    if (!mime) { window.alert("This browser can't record video exports."); return; }
     const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: res === "1080p" ? 12_000_000 : 6_000_000 });
     const chunks: Blob[] = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
@@ -794,6 +795,11 @@ export function VideoEditor() {
           <select value={res} onChange={(e) => setRes(e.target.value as ResKey)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm">
             <option value="1080p">1080p</option>
             <option value="720p">720p</option>
+          </select>
+          <select value={fmtSel} onChange={(e) => setFmtSel(e.target.value as ExportFormat)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm" title="Export format">
+            <option value="auto">Auto</option>
+            <option value="mp4" disabled={!canMp4}>MP4{canMp4 ? "" : " (unsupported)"}</option>
+            <option value="webm">WebM</option>
           </select>
           <button onClick={exportVideo} disabled={!total || exporting !== null} className="h-8 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-40">
             {exporting !== null ? `Exporting ${exporting}%` : "Export"}
