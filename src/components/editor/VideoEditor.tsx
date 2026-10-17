@@ -5,6 +5,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { EASINGS, interpolate, type Easing, type Keyframe } from "./keyframe-easing";
+import { detectKind, guessMime, pickExportMime, resolveDuration, type ExportFormat } from "./media-utils";
 
 type Kind = "video" | "image" | "audio" | "text";
 type Trans = "none" | "fade" | "slide" | "wipe" | "zoom" | "rise";
@@ -100,6 +101,11 @@ export function VideoEditor() {
   const [sel, setSel] = useState<string | null>(null);
   const [zoom, setZoom] = useState(Z_DEF);
   const [res, setRes] = useState<ResKey>("1080p");
+  const [fmtSel, setFmtSel] = useState<ExportFormat>("auto");
+  const [canMp4, setCanMp4] = useState(true);
+  useEffect(() => {
+    setCanMp4(typeof MediaRecorder !== "undefined" && !!pickExportMime("mp4", (m) => MediaRecorder.isTypeSupported(m)));
+  }, []);
   const [exporting, setExporting] = useState<number | null>(null);
   const [bad, setBad] = useState(false);
   const [, bump] = useState(0);
@@ -368,9 +374,10 @@ export function VideoEditor() {
     const list = [...S.current.items];
     const media = { ...S.current.doc.media };
     let last: string | null = null;
+    const skipped: string[] = [];
     for (const f of Array.from(files)) {
-      const kind = f.type.startsWith("video") ? "video" : f.type.startsWith("image") ? "image" : f.type.startsWith("audio") ? "audio" : null;
-      if (!kind) continue;
+      const kind = detectKind(f.name, f.type);
+      if (!kind) { skipped.push(f.name); continue; }
       const id = uid();
       const url = URL.createObjectURL(f);
       let duration = 5;
@@ -379,13 +386,15 @@ export function VideoEditor() {
       } else {
         const el = document.createElement(kind === "audio" ? "audio" : "video");
         el.preload = "metadata";
+        el.muted = true;
         el.src = url;
-        duration = await new Promise<number>((r) => { el.onloadedmetadata = () => r(el.duration); el.onerror = () => r(0); });
-        if (!isFinite(duration) || duration <= 0) { URL.revokeObjectURL(url); continue; }
+        duration = await resolveDuration(el);
+        el.removeAttribute("src"); el.load();
+        if (!isFinite(duration) || duration <= 0) { URL.revokeObjectURL(url); skipped.push(f.name); continue; }
       }
       urls.current.set(id, url);
       blobs.current.set(id, f);
-      media[id] = { id, kind, name: f.name, duration, type: f.type };
+      media[id] = { id, kind, name: f.name, duration, type: guessMime(f.name, f.type) };
       const n = trackCount(list);
       let track = n, start = 0;
       if (kind === "audio") {
@@ -401,6 +410,7 @@ export function VideoEditor() {
     }
     setDoc((d) => ({ ...d, items: list, media }));
     if (last) setSel(last);
+    if (skipped.length) window.alert(`Couldn't import: ${skipped.join(", ")}\nThis browser can't read that file format.`);
   };
 
   const addText = () => {
@@ -680,7 +690,8 @@ export function VideoEditor() {
     ensureAudio();
     const stream = cv.captureStream(30);
     audioDest.current!.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
-    const mime = ["video/mp4;codecs=avc1,mp4a", "video/webm;codecs=vp9,opus", "video/webm"].find((m) => MediaRecorder.isTypeSupported(m))!;
+    const mime = pickExportMime(fmtSel, (m) => MediaRecorder.isTypeSupported(m)) ?? pickExportMime("auto", (m) => MediaRecorder.isTypeSupported(m));
+    if (!mime) { window.alert("This browser can't record video exports."); return; }
     const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: res === "1080p" ? 12_000_000 : 6_000_000 });
     const chunks: Blob[] = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
@@ -784,6 +795,11 @@ export function VideoEditor() {
           <select value={res} onChange={(e) => setRes(e.target.value as ResKey)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm">
             <option value="1080p">1080p</option>
             <option value="720p">720p</option>
+          </select>
+          <select value={fmtSel} onChange={(e) => setFmtSel(e.target.value as ExportFormat)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm" title="Export format">
+            <option value="auto">Auto</option>
+            <option value="mp4" disabled={!canMp4}>MP4{canMp4 ? "" : " (unsupported)"}</option>
+            <option value="webm">WebM</option>
           </select>
           <button onClick={exportVideo} disabled={!total || exporting !== null} className="h-8 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-40">
             {exporting !== null ? `Exporting ${exporting}%` : "Export"}
