@@ -5,6 +5,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { EASINGS, interpolate, type Easing, type Keyframe } from "./keyframe-easing";
+import { detectKind, guessMime, pickExportMime, resolveDuration, type ExportFormat } from "./media-utils";
 
 type Kind = "video" | "image" | "audio" | "text";
 type Trans = "none" | "fade" | "slide" | "wipe" | "zoom" | "rise";
@@ -100,6 +101,11 @@ export function VideoEditor() {
   const [sel, setSel] = useState<string | null>(null);
   const [zoom, setZoom] = useState(Z_DEF);
   const [res, setRes] = useState<ResKey>("1080p");
+  const [fmtSel, setFmtSel] = useState<ExportFormat>("auto");
+  const [canMp4, setCanMp4] = useState(true);
+  useEffect(() => {
+    setCanMp4(typeof MediaRecorder !== "undefined" && !!pickExportMime("mp4", (m) => MediaRecorder.isTypeSupported(m)));
+  }, []);
   const [exporting, setExporting] = useState<number | null>(null);
   const [bad, setBad] = useState(false);
   const [, bump] = useState(0);
@@ -404,6 +410,7 @@ export function VideoEditor() {
     }
     setDoc((d) => ({ ...d, items: list, media }));
     if (last) setSel(last);
+    if (skipped.length) window.alert(`Couldn't import: ${skipped.join(", ")}\nThis browser can't read that file format.`);
   };
 
   const addText = () => {
