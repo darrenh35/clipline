@@ -1,6 +1,7 @@
 # Clipline
 
-Make a video editor that is as simple as capcut, but also high quality.
+*Clipline* is a simple video editor with many features.
+This project is AI-assisted.
 
 This project was built with [Lovable](https://lovable.dev).
 
