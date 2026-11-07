@@ -13,3 +13,4 @@
 - Store easing on the outgoing keyframe, and preserve it when changing its value so direct preview edits do not reset animation curves.
 - Save Clipline projects with the new identity while accepting legacy Cutline projects so existing edits remain usable.
 - Render optional text glow in the shared canvas draw pipeline and store its settings on text styles so saved projects, previews, and exports stay consistent without changing legacy text.
+- Direct preview resizing updates the existing scale property through the keyframe-aware setter; keep resize math in the shared preview-transform helper so saved edits and exports use the same transforms.
