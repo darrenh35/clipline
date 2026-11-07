@@ -3,3 +3,6 @@
 - [x] Add selectable keyframe easing.
 - [x] Add direct preview selection, movement, and rotation.
 - [x] Verify editing with real media and saved projects.
+- [x] Add optional text glow.
+- [x] Add top-of-screen Help.
+- [x] Distinguish opening projects from importing media and verify the controls.

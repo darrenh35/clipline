@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Search, Play, Pause, Undo2, Redo2, Scissors, Trash2, Upload, Type, FolderOpen, Save, RotateCw, Film, Image as ImageIcon, Music,
+  Search, Play, Pause, Undo2, Redo2, Scissors, Trash2, Upload, Type, FolderOpen, Save, RotateCw, Film, Image as ImageIcon, Music, CircleHelp, Sparkles,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EASINGS, interpolate, type Easing, type Keyframe } from "./keyframe-easing";
 import { detectKind, guessMime, pickExportMime, resolveDuration, type ExportFormat } from "./media-utils";
 
 type Kind = "video" | "image" | "audio" | "text";
 type Trans = "none" | "fade" | "slide" | "wipe" | "zoom" | "rise";
 type KF = Keyframe;
-type TextStyle = { text: string; size: number; font: string; bold: boolean; italic: boolean; color: string; stroke: string; strokeW: number; shadow: boolean; bg: boolean };
+type TextStyle = { text: string; size: number; font: string; bold: boolean; italic: boolean; color: string; stroke: string; strokeW: number; shadow: boolean; bg: boolean; glow?: boolean; glowColor?: string; glowStrength?: number };
 type Item = {
   id: string; kind: Kind; track: number; start: number; dur: number; name: string; mediaId?: string;
   inP: number; speed: number; base: Record<string, number>; kf: Record<string, KF[]>;
@@ -98,6 +99,7 @@ export function VideoEditor() {
   const items = doc.items;
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
   const [zoom, setZoom] = useState(Z_DEF);
   const [res, setRes] = useState<ResKey>("1080p");
@@ -223,6 +225,17 @@ export function VideoEditor() {
           ctx.beginPath();
           ctx.roundRect(-w / 2 - px * 0.4, -px * 0.7, w + px * 0.8, px * 1.4, px * 0.2);
           ctx.fill();
+        }
+        if (st.glow) {
+          ctx.save();
+          ctx.shadowColor = st.glowColor ?? st.color;
+          ctx.shadowBlur = px * (st.glowStrength ?? 50) / 100;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+          ctx.fillStyle = st.color;
+          ctx.fillText(st.text, 0, 0);
+          ctx.fillText(st.text, 0, 0);
+          ctx.restore();
         }
         if (st.shadow) { ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = px * 0.25; ctx.shadowOffsetY = px * 0.06; }
         if (st.strokeW > 0) {
@@ -722,6 +735,7 @@ export function VideoEditor() {
     const isTyping = (el: HTMLElement) =>
       (el.tagName === "INPUT" && ["text", "number", "search"].includes((el as HTMLInputElement).type)) || el.tagName === "TEXTAREA" || el.isContentEditable;
     const onKey = (e: KeyboardEvent) => {
+      if (helpOpen) return;
       const el = e.target as HTMLElement;
       const typing = isTyping(el);
       const mod = e.ctrlKey || e.metaKey;
@@ -744,7 +758,7 @@ export function VideoEditor() {
       if (e.key === "Delete" || e.key === "Backspace") del();
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !isTyping(e.target as HTMLElement)) e.preventDefault();
+      if (!helpOpen && e.code === "Space" && !isTyping(e.target as HTMLElement)) e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKeyUp);
@@ -781,16 +795,17 @@ export function VideoEditor() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden text-foreground">
-      <header className="glass flex h-14 shrink-0 items-center gap-2 border-b px-4">
-        <div className="mr-3 flex items-center gap-2 text-lg font-bold tracking-tight">
+      <header className="glass flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 lg:h-14 lg:flex-nowrap lg:px-4">
+        <div className="mr-1 flex items-center gap-2 text-lg font-bold">
           <span className="inline-block h-3 w-3 rounded-sm bg-primary" /> Clipline
         </div>
-        <button onClick={() => fileInput.current?.click()} className={btn} title="Import video, photos or audio"><Upload className="h-4 w-4" /><span className="hidden md:inline">Import</span></button>
+        <Button variant="secondary" size="sm" onClick={() => fileInput.current?.click()} title="Import videos, photos or audio into your edit"><Upload />Import media</Button>
         <button onClick={addText} className={btn} title="Add text"><Type className="h-4 w-4" /><span className="hidden md:inline">Text</span></button>
         <input ref={fileInput} type="file" accept="video/*,image/*,audio/*" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
         <input ref={projInput} type="file" accept=".clipline,.cutline" hidden onChange={(e) => { openProject(e.target.files?.[0]); e.target.value = ""; }} />
-        <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => projInput.current?.click()} className={btn} title="Open project (Ctrl+O)"><FolderOpen className="h-4 w-4" /><span className="hidden md:inline">Open</span></button>
+        <Button variant="outline" size="sm" onClick={() => projInput.current?.click()} title="Open a saved .clipline or legacy .cutline project (Ctrl+O)"><FolderOpen />Open .clipline</Button>
+        <Button variant="ghost" size="sm" onClick={() => setHelpOpen(true)} title="Clipline help"><CircleHelp />Help</Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <button onClick={saveProject} disabled={!items.length} className={btn} title="Save project (Ctrl+S)"><Save className="h-4 w-4" /><span className="hidden md:inline">Save</span>{items.length > 0 && doc !== saved.current && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}</button>
           <select value={res} onChange={(e) => setRes(e.target.value as ResKey)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm">
             <option value="1080p">1080p</option>
@@ -806,6 +821,43 @@ export function VideoEditor() {
           </button>
         </div>
       </header>
+
+      <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
+        <DialogContent className="max-h-[85dvh] w-[calc(100%-2rem)] overflow-y-auto rounded-lg">
+          <DialogHeader>
+            <DialogTitle>Clipline help</DialogTitle>
+            <DialogDescription>Editing, project files and keyboard shortcuts.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            <section className="space-y-1">
+              <h3 className="font-semibold">Media and project files</h3>
+              <p className="text-muted-foreground"><strong className="text-foreground">Import media</strong> adds videos, photos or audio to your timeline.</p>
+              <p className="text-muted-foreground"><strong className="text-foreground">Open .clipline</strong> restores a saved edit, including its media and settings. Older .cutline projects also work.</p>
+              <p className="text-muted-foreground"><strong className="text-foreground">Save</strong> downloads an editable .clipline project. <strong className="text-foreground">Export</strong> creates a finished video. Save your project before closing or refreshing.</p>
+            </section>
+            <section className="space-y-1">
+              <h3 className="font-semibold">Editing and text glow</h3>
+              <p className="text-muted-foreground">Drag timeline clips to move them, their edges to trim, or up and down to change tracks. Select a clip to change its properties.</p>
+              <p className="text-muted-foreground">While paused, drag selected text, video or photos in the preview to move them. Drag the handle below the selection to rotate; hold Shift to snap.</p>
+              <p className="text-muted-foreground">Select text and turn on Glow in Properties, then choose its color and strength. Add keyframes with the diamond beside a property and choose easing to shape its movement.</p>
+            </section>
+            <section className="space-y-2">
+              <h3 className="font-semibold">Keyboard shortcuts</h3>
+              <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-muted-foreground">
+                <dt>Play / pause</dt><dd className="font-mono">Space</dd>
+                <dt>Step a frame (paused)</dt><dd className="font-mono">, / .</dd>
+                <dt>Split at playhead</dt><dd className="font-mono">S</dd>
+                <dt>Delete selection</dt><dd className="font-mono">Delete</dd>
+                <dt>Undo</dt><dd className="font-mono">Ctrl/⌘ Z</dd>
+                <dt>Redo</dt><dd className="font-mono">Ctrl/⌘ Shift Z</dd>
+                <dt>Redo (alternative)</dt><dd className="font-mono">Ctrl/⌘ Y</dd>
+                <dt>Save project</dt><dd className="font-mono">Ctrl/⌘ S</dd>
+                <dt>Open project</dt><dd className="font-mono">Ctrl/⌘ O</dd>
+              </dl>
+            </section>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex min-h-0 flex-1">
         <main ref={stageRef} className="flex min-w-0 flex-1 items-center justify-center bg-stage/60 p-4">
@@ -853,6 +905,15 @@ export function VideoEditor() {
                       return <button key={k} onClick={() => setStyle(selItem, { [k]: !on })} className={`h-8 flex-1 rounded-md text-xs ${on ? "bg-primary text-primary-foreground" : "bg-secondary/70 hover:bg-accent"}`}>{l}</button>;
                     })}
                   </div>
+                  <Button variant={selItem.style.glow ? "default" : "secondary"} size="sm" className="w-full" aria-pressed={!!selItem.style.glow} onClick={() => setStyle(selItem, { glow: !selItem.style?.glow })}>
+                    <Sparkles />Glow
+                  </Button>
+                  {selItem.style.glow && <div className="space-y-2">
+                    <label className="block">Glow color<input aria-label="Glow color" type="color" value={selItem.style.glowColor ?? selItem.style.color} onChange={(e) => setStyle(selItem, { glowColor: e.target.value })} className="mt-1 h-9 w-full cursor-pointer rounded-md border bg-secondary" /></label>
+                    <label className="block">Glow strength <span className="font-mono text-muted-foreground">{selItem.style.glowStrength ?? 50}%</span>
+                      <input aria-label="Glow strength" type="range" min={1} max={100} value={selItem.style.glowStrength ?? 50} onChange={(e) => setStyle(selItem, { glowStrength: +e.target.value })} className="w-full" />
+                    </label>
+                  </div>}
                   <div className="flex gap-2">
                     <label className="flex-1">Fill<input type="color" value={selItem.style.color} onChange={(e) => setStyle(selItem, { color: e.target.value })} className="mt-1 h-9 w-full cursor-pointer rounded-md border bg-secondary" /></label>
                     <label className="flex-1">Stroke<input type="color" value={selItem.style.stroke} onChange={(e) => setStyle(selItem, { stroke: e.target.value })} className="mt-1 h-9 w-full cursor-pointer rounded-md border bg-secondary" /></label>

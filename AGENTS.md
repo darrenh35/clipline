@@ -12,3 +12,4 @@
 - Keep keyframe interpolation in the shared easing module so preview and export use identical animation curves; missing easing retains legacy smooth motion.
 - Store easing on the outgoing keyframe, and preserve it when changing its value so direct preview edits do not reset animation curves.
 - Save Clipline projects with the new identity while accepting legacy Cutline projects so existing edits remain usable.
+- Render optional text glow in the shared canvas draw pipeline and store its settings on text styles so saved projects, previews, and exports stay consistent without changing legacy text.
