@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Search, Play, Pause, Undo2, Redo2, Scissors, Trash2, Upload, Type, FolderOpen, Save, RotateCw, Film, Image as ImageIcon, Music, CircleHelp, Sparkles,
+  Search, Play, Pause, Undo2, Redo2, Scissors, Trash2, Upload, Type, FolderOpen, Save, RotateCw, Maximize2, Minus, Plus, Film, Image as ImageIcon, Music, CircleHelp, Sparkles,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EASINGS, interpolate, type Easing, type Keyframe } from "./keyframe-easing";
 import { detectKind, guessMime, pickExportMime, resolveDuration, type ExportFormat } from "./media-utils";
+import { resizedScale } from "./preview-transform";
 
 type Kind = "video" | "image" | "audio" | "text";
 type Trans = "none" | "fade" | "slide" | "wipe" | "zoom" | "rise";
@@ -121,7 +122,7 @@ export function VideoEditor() {
     const stage = stageRef.current;
     if (!stage) return;
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) setStageSize({ w: Math.max(1, entry.contentRect.width - 64), h: Math.max(1, entry.contentRect.height - 64) });
+      if (entry) setStageSize({ w: Math.max(1, entry.contentRect.width - 96), h: Math.max(1, entry.contentRect.height - 96) });
     });
     observer.observe(stage);
     return () => observer.disconnect();
@@ -586,7 +587,7 @@ export function VideoEditor() {
       w: w * scale, h: h * scale, rotation: val(it, "rotation", t) };
   };
 
-  const previewDrag = (e: React.PointerEvent, mode: "move" | "rotate") => {
+  const previewDrag = (e: React.PointerEvent, mode: "move" | "rotate" | "resize") => {
     if (e.button !== 0 || S.current.playing || exporting !== null) return;
     const cv = canvasRef.current;
     if (!cv) return;
@@ -595,7 +596,7 @@ export function VideoEditor() {
     const x = (e.clientX - rect.left) / rect.width * cv.width;
     const y = (e.clientY - rect.top) / rect.height * cv.height;
     const active = S.current.items.filter((i) => i.kind !== "audio" && t >= i.start && t < i.start + i.dur).sort((a, b) => a.track - b.track);
-    const it = mode === "rotate" ? active.find((i) => i.id === sel) : active.find((i) => {
+    const it = mode !== "move" ? active.find((i) => i.id === sel) : active.find((i) => {
       const b = previewBounds(i);
       if (!b) return false;
       const angle = b.rotation * Math.PI / 180, dx = x - b.x, dy = y - b.y;
@@ -608,6 +609,8 @@ export function VideoEditor() {
     if (!b) return;
     const x0 = e.clientX, y0 = e.clientY, bx = val(it, "x", t), by = val(it, "y", t);
     const cx = rect.left + b.x / cv.width * rect.width, cy = rect.top + b.y / cv.height * rect.height;
+    const initialScale = val(it, "scale", t);
+    const initialDistance = Math.hypot(e.clientX - cx, e.clientY - cy);
     let lastAngle = Math.atan2(e.clientY - cy, e.clientX - cx), rotation = b.rotation;
     let moved = false;
     dragging.current = true;
@@ -622,6 +625,8 @@ export function VideoEditor() {
         lastAngle = angle;
         const normalized = ((rotation + 180) % 360 + 360) % 360 - 180;
         setProp(it, "rotation", ev.shiftKey ? Math.round(normalized / 15) * 15 : Math.round(normalized));
+      } else if (mode === "resize") {
+        setProp(it, "scale", resizedScale(initialScale, initialDistance, Math.hypot(ev.clientX - cx, ev.clientY - cy)));
       } else {
         setProp(it, "x", +(bx + (ev.clientX - x0) / rect.width * 100).toFixed(1));
         setProp(it, "y", +(by + (ev.clientY - y0) / rect.height * 100).toFixed(1));
@@ -783,7 +788,6 @@ export function VideoEditor() {
   const timelineLen = Math.max(total + 20, 60);
   const step = STEPS.find((s) => s * zoom >= 70) ?? 600;
   const minor = step / (step === 0.25 ? 5 : 5);
-  const zv = (Math.log(zoom / Z_MIN) / Math.log(Z_MAX / Z_MIN)) * 100;
   const h = hist.current;
   const canUndo = h.past.length > 0 || doc !== h.cur;
   const btn = "inline-flex h-8 items-center gap-1.5 rounded-md bg-secondary/70 px-2.5 text-sm transition hover:bg-accent disabled:opacity-40";
@@ -797,7 +801,7 @@ export function VideoEditor() {
     <div className="flex h-screen flex-col overflow-hidden text-foreground">
       <header className="glass flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 lg:h-14 lg:flex-nowrap lg:px-4">
         <div className="mr-1 flex items-center gap-2 text-lg font-bold">
-          <span className="inline-block h-3 w-3 rounded-sm bg-primary" /> Clipline
+          <img src="/icon-192.png" alt="" className="h-8 w-8 shrink-0 rounded-md" /> Clipline
         </div>
         <Button variant="secondary" size="sm" onClick={() => fileInput.current?.click()} title="Import videos, photos or audio into your edit"><Upload />Import media</Button>
         <button onClick={addText} className={btn} title="Add text"><Type className="h-4 w-4" /><span className="hidden md:inline">Text</span></button>
@@ -838,7 +842,7 @@ export function VideoEditor() {
             <section className="space-y-1">
               <h3 className="font-semibold">Editing and text glow</h3>
               <p className="text-muted-foreground">Drag timeline clips to move them, their edges to trim, or up and down to change tracks. Select a clip to change its properties.</p>
-              <p className="text-muted-foreground">While paused, drag selected text, video or photos in the preview to move them. Drag the handle below the selection to rotate; hold Shift to snap.</p>
+              <p className="text-muted-foreground">While paused, drag text, video or photos in the preview to move them. Drag the rotation button below the selection to rotate; hold Shift to snap. Drag the resize button outward to enlarge or inward to shrink.</p>
               <p className="text-muted-foreground">Select text and turn on Glow in Properties, then choose its color and strength. Add keyframes with the diamond beside a property and choose easing to shape its movement.</p>
             </section>
             <section className="space-y-2">
@@ -876,6 +880,11 @@ export function VideoEditor() {
                 style={{ left: `${(selection.x - Math.sin(rotateAngle) * handleDistance) / W * 100}%`, top: `${(selection.y + Math.cos(rotateAngle) * handleDistance) / H * 100}%` }}>
                 <RotateCw />
               </Button>
+              <Button size="icon" variant="outline" aria-label="Resize selection" title="Drag to resize" onPointerDown={(e) => previewDrag(e, "resize")}
+                className="absolute z-10 h-7 w-7 -translate-x-1/2 -translate-y-1/2 touch-none rounded-full border-primary bg-background text-primary cursor-nwse-resize"
+                style={{ left: `${(selection.x - Math.sin(rotateAngle) * handleDistance) / W * 100 + Math.cos(rotateAngle) * 36 / previewWidth * 100}%`, top: `${(selection.y + Math.cos(rotateAngle) * handleDistance) / H * 100 + Math.sin(rotateAngle) * 36 / (previewWidth * H / W) * 100}%` }}>
+                <Maximize2 />
+              </Button>
             </>}
             {!items.length && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-center text-sm text-muted-foreground">Import video, photos or audio to start editing</div>
@@ -893,7 +902,7 @@ export function VideoEditor() {
 
               {selItem.style && (
                 <div className="space-y-3 rounded-lg border p-3">
-                  <input value={selItem.style.text} onChange={(e) => setStyle(selItem, { text: e.target.value })} className="h-9 w-full rounded-md border bg-secondary/70 px-2" />
+                  <input aria-label="Text content" value={selItem.style.text} onChange={(e) => setStyle(selItem, { text: e.target.value })} className="h-9 w-full rounded-md border bg-secondary/70 px-2" />
                   <label className="block">Font
                     <select value={selItem.style.font} onChange={(e) => setStyle(selItem, { font: e.target.value })} className={field} style={{ fontFamily: selItem.style.font }}>
                       {FONTS.map((f) => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}
@@ -911,7 +920,7 @@ export function VideoEditor() {
                   {selItem.style.glow && <div className="space-y-2">
                     <label className="block">Glow color<input aria-label="Glow color" type="color" value={selItem.style.glowColor ?? selItem.style.color} onChange={(e) => setStyle(selItem, { glowColor: e.target.value })} className="mt-1 h-9 w-full cursor-pointer rounded-md border bg-secondary" /></label>
                     <label className="block">Glow strength <span className="font-mono text-muted-foreground">{selItem.style.glowStrength ?? 50}%</span>
-                      <input aria-label="Glow strength" type="range" min={1} max={100} value={selItem.style.glowStrength ?? 50} onChange={(e) => setStyle(selItem, { glowStrength: +e.target.value })} className="w-full" />
+                      <input aria-label="Glow strength" type="number" min={1} max={100} value={selItem.style.glowStrength ?? 50} onChange={(e) => { if (e.target.value !== "") setStyle(selItem, { glowStrength: clamp(+e.target.value, 1, 100) }); }} className={field} />
                     </label>
                   </div>}
                   <div className="flex gap-2">
@@ -919,17 +928,17 @@ export function VideoEditor() {
                     <label className="flex-1">Stroke<input type="color" value={selItem.style.stroke} onChange={(e) => setStyle(selItem, { stroke: e.target.value })} className="mt-1 h-9 w-full cursor-pointer rounded-md border bg-secondary" /></label>
                   </div>
                   <label className="block">Stroke width
-                    <input type="range" min={0} max={40} value={selItem.style.strokeW} onChange={(e) => setStyle(selItem, { strokeW: +e.target.value })} className="w-full" />
+                    <input aria-label="Stroke width" type="number" min={0} max={40} value={selItem.style.strokeW} onChange={(e) => { if (e.target.value !== "") setStyle(selItem, { strokeW: clamp(+e.target.value, 0, 40) }); }} className={field} />
                   </label>
                   <label className="block">Font size
-                    <input type="range" min={2} max={30} step={0.5} value={selItem.style.size} onChange={(e) => setStyle(selItem, { size: +e.target.value })} className="w-full" />
+                    <input aria-label="Font size" type="number" min={2} max={30} step={0.5} value={selItem.style.size} onChange={(e) => { if (e.target.value !== "") setStyle(selItem, { size: clamp(+e.target.value, 2, 30) }); }} className={field} />
                   </label>
                 </div>
               )}
 
               {isMedia(selItem) && (
                 <label className="block">Speed <span className="font-mono text-muted-foreground">{selItem.speed.toFixed(2)}×</span>
-                  <input type="range" min={0.25} max={4} step={0.05} value={selItem.speed} onChange={(e) => setSpeed(selItem, +e.target.value)} className="w-full" />
+                  <input aria-label="Speed" type="number" min={0.25} max={4} step={0.05} value={selItem.speed} onChange={(e) => { if (e.target.value !== "") setSpeed(selItem, clamp(+e.target.value, 0.25, 4)); }} className={field} />
                 </label>
               )}
 
@@ -945,8 +954,8 @@ export function VideoEditor() {
                         </select>
                       </label>
                       {selItem[tk] !== "none" && (
-                        <label className="mt-1 block text-xs text-muted-foreground">{selItem[dk].toFixed(1)}s
-                          <input type="range" min={0.1} max={Math.max(0.2, Math.min(3, selItem.dur))} step={0.1} value={selItem[dk]} onChange={(e) => updItem(selItem.id, (i) => ({ ...i, [dk]: +e.target.value }))} className="w-full" />
+                        <label className="mt-1 block text-xs text-muted-foreground">Duration (s)
+                          <input aria-label={`Transition ${w} duration`} type="number" min={0.1} max={Math.max(0.2, Math.min(3, selItem.dur))} step={0.1} value={selItem[dk]} onChange={(e) => { if (e.target.value !== "") updItem(selItem.id, (i) => ({ ...i, [dk]: clamp(+e.target.value, 0.1, Math.max(0.2, Math.min(3, i.dur))) })); }} className={field} />
                         </label>
                       )}
                     </div>
@@ -977,7 +986,7 @@ export function VideoEditor() {
                             className={`w-4 text-sm leading-none disabled:opacity-30 ${on ? "text-primary" : ks.length ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{on ? "◆" : "◇"}</button>
                         </span>
                       </div>
-                      <input aria-label={d.label} type="range" min={d.min} max={d.max} step={p === "x" || p === "y" ? 0.5 : 1} value={v} onChange={(e) => setProp(selItem, p, +e.target.value)} className="w-full" />
+                      <input aria-label={d.label} type="number" min={d.min} max={d.max} step={p === "x" || p === "y" || p === "scale" ? 0.1 : 1} value={+v.toFixed(1)} onChange={(e) => { if (e.target.value !== "") setProp(selItem, p, clamp(+e.target.value, d.min, d.max)); }} className={field} />
                       {outgoing && <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                         Easing
                         <select aria-label={`${d.label} easing`} value={outgoing.easing ?? "smooth"} className="h-7 min-w-0 flex-1 rounded-md border bg-secondary px-1 text-foreground"
@@ -991,7 +1000,6 @@ export function VideoEditor() {
                     </div>
                   );
                 })}
-                <p className="text-[11px] text-muted-foreground">Once a property has a keyframe, moving its slider sets a keyframe at the playhead.</p>
               </div>
 
               <button onClick={del} className="h-9 w-full rounded-md bg-destructive/15 text-destructive hover:bg-destructive/25">Delete</button>
@@ -1017,8 +1025,9 @@ export function VideoEditor() {
           </div>
           <div className="flex flex-1 items-center justify-end gap-2 text-xs text-muted-foreground">
             <Search className="h-4 w-4 shrink-0" aria-label="Zoom" />
-            <input type="range" min={0} max={100} step={0.5} value={zv} onChange={(e) => setZoom(Z_MIN * Math.pow(Z_MAX / Z_MIN, +e.target.value / 100))} className="w-24" aria-label="Timeline zoom" />
-            <button onClick={() => setZoom(Z_DEF)} className="h-7 rounded-md bg-secondary/70 px-2 hover:bg-accent hover:text-foreground" title="Reset zoom">Reset</button>
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label="Zoom out" title="Zoom out" disabled={zoom <= Z_MIN} onClick={() => setZoom((z) => Math.max(Z_MIN, z / 1.5))}><Minus /></Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label="Zoom in" title="Zoom in" disabled={zoom >= Z_MAX} onClick={() => setZoom((z) => Math.min(Z_MAX, z * 1.5))}><Plus /></Button>
+            <Button variant="secondary" size="sm" className="h-7" onClick={() => setZoom(Z_DEF)} title="Reset zoom">Reset</Button>
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-auto pl-3">
