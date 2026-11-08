@@ -62,7 +62,7 @@ export const toAss = (cues: SubCue[], st: SubStyle, w = 1920, h = 1080) => {
 const parseTime = (t: string) => {
   const m = t.trim().match(/(?:(\d+):)?(\d+):(\d+)[,.](\d+)/);
   if (!m) return NaN;
-  return (+(m[1] ?? 0)) * 3600 + +m[2] * 60 + +m[3] + +`0.${m[4]}`;
+  return (+(m[1] ?? 0)) * 3600 + +(m[2] ?? 0) * 60 + +(m[3] ?? 0) + +`0.${m[4] ?? 0}`;
 };
 
 /** Parses .srt or .vtt text into cues (styling tags stripped). */
@@ -73,7 +73,7 @@ export const parseSubtitles = (src: string, mkId: () => string): SubCue[] => {
     const lines = b.split("\n").filter((l) => l.trim() !== "");
     const i = lines.findIndex((l) => l.includes("-->"));
     if (i < 0) continue;
-    const [a, z] = lines[i].split("-->");
+    const [a = "", z = ""] = (lines[i] ?? "").split("-->");
     const start = parseTime(a), end = parseTime(z.split(/\s+/).filter(Boolean)[0] ?? "");
     const text = lines.slice(i + 1).join("\n").replace(/<[^>]+>/g, "").trim();
     if (isFinite(start) && isFinite(end) && text) out.push({ id: mkId(), start, end, text });
