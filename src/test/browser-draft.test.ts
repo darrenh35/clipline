@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+import { Blob as NativeBlob } from "node:buffer";
 import { beforeEach, describe, expect, it } from "vitest";
 import { clearBrowserDraft, loadBrowserDraft, saveBrowserDraft } from "../components/editor/browser-draft";
 
@@ -7,7 +8,7 @@ beforeEach(async () => { await clearBrowserDraft(); });
 describe("browser autosave", () => {
   it("restores edits, keyframe easing, glow and raw media together", async () => {
     const doc = { items: [{ kf: { scale: [{ t: 0, v: 120, easing: "sine-in" }] }, style: { glow: true, glowStrength: 85 } }] };
-    const media = new Blob(["real media bytes"], { type: "video/webm" });
+    const media = new NativeBlob(["real media bytes"], { type: "video/webm" }) as unknown as Blob;
     await saveBrowserDraft({ version: 1, doc, options: { res: "720p" } }, [["video", media]]);
     const restored = await loadBrowserDraft<typeof doc, { res: string }>();
     expect(restored.draft?.doc).toEqual(doc);
