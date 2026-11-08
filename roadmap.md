@@ -1,4 +1,6 @@
 # Current tasks
+- [ ] Add browser-local autosave with automatic draft restoration and a start-fresh option.
+- [ ] Verify autosave preserves real media and edits after reload.
 - [ ] Show the app icon beside the browser editor name.
 - [ ] Add draggable preview resizing alongside rotation and replace every slider with number fields or zoom buttons.
 - [ ] Verify direct transforms and slider-free controls on desktop and narrow screens.
