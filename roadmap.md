@@ -1,7 +1,9 @@
 # Current tasks
-- [ ] Show the app icon beside the browser editor name.
-- [ ] Add draggable preview resizing alongside rotation and replace every slider with number fields or zoom buttons.
-- [ ] Verify direct transforms and slider-free controls on desktop and narrow screens.
+- [x] Add browser-local autosave with automatic draft restoration and a start-fresh option.
+- [x] Verify autosave preserves real media and edits after reload.
+- [x] Show the app icon beside the browser editor name.
+- [x] Add draggable preview resizing alongside rotation and replace every slider with number fields or zoom buttons.
+- [x] Verify direct transforms and slider-free controls on desktop and narrow screens.
 - [x] Rename the editor Clipline, preserving old project compatibility.
 - [x] Add selectable keyframe easing.
 - [x] Add direct preview selection, movement, and rotation.
