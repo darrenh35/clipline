@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { EASINGS, interpolate, type Easing, type Keyframe } from "./keyframe-easing";
 import { detectKind, guessMime, pickExportMime, resolveDuration, type ExportFormat } from "./media-utils";
 import { resizedScale } from "./preview-transform";
+import { clearBrowserDraft, loadBrowserDraft, saveBrowserDraft } from "./browser-draft";
 
 type Kind = "video" | "image" | "audio" | "text";
 type Trans = "none" | "fade" | "slide" | "wipe" | "zoom" | "rise";
@@ -20,6 +21,7 @@ type Item = {
 };
 type Media = { id: string; kind: "video" | "image" | "audio"; name: string; duration: number; type: string };
 type Doc = { items: Item[]; media: Record<string, Media> };
+type DraftOptions = { res: ResKey; format: ExportFormat; zoom: number };
 
 const PROPS = {
   x: { label: "Position X", min: -50, max: 150, def: 50, unit: "%" },
@@ -101,6 +103,14 @@ export function VideoEditor() {
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(true);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("Restoring draft…");
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const cached = useRef<{ doc: Doc; options: string } | null>(null);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftGeneration = useRef(0);
   const [sel, setSel] = useState<string | null>(null);
   const [zoom, setZoom] = useState(Z_DEF);
   const [res, setRes] = useState<ResKey>("1080p");
@@ -380,6 +390,114 @@ export function VideoEditor() {
     img.src = url;
     imgs.current.set(id, img);
     return img;
+  };
+
+  // Restore before accepting edits; storage failures never replace the existing draft.
+  useEffect(() => {
+    let cancelled = false;
+    loadBrowserDraft<Doc, DraftOptions>().then(({ draft, media }) => {
+      if (cancelled) return;
+      if (draft) {
+        if (draft.version !== 1 || !Array.isArray(draft.doc?.items) || !draft.doc.media) throw new Error("Invalid draft");
+        for (const id of Object.keys(draft.doc.media)) {
+          const blob = media.get(id);
+          if (!blob) throw new Error("Missing draft media");
+        }
+        for (const [id, metadata] of Object.entries(draft.doc.media)) {
+          const blob = media.get(id);
+          if (!blob) continue;
+          const url = URL.createObjectURL(blob);
+          blobs.current.set(id, blob);
+          urls.current.set(id, url);
+          if (metadata.kind === "image") loadImg(id, url);
+        }
+        hist.current = { past: [], future: [], cur: draft.doc, applying: true };
+        setDoc(draft.doc);
+        setRes(draft.options.res);
+        setFmtSel(draft.options.format);
+        setZoom(draft.options.zoom);
+        cached.current = { doc: draft.doc, options: JSON.stringify(draft.options) };
+        setDraftStatus("Saved to browser");
+      } else {
+        cached.current = { doc: EMPTY, options: JSON.stringify({ res: "1080p", format: "auto", zoom: Z_DEF }) };
+        setDraftStatus("No draft yet");
+      }
+      setDraftReady(true);
+    }).catch(() => {
+      if (!cancelled) {
+        setDraftStatus("Autosave unavailable");
+        setDraftError("Your previous browser draft could not be opened. Save a .clipline file to keep new edits.");
+      }
+    }).finally(() => { if (!cancelled) setDraftLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const persistDraft = useCallback(async () => {
+    if (!draftReady) return;
+    const d = S.current.doc;
+    const options: DraftOptions = { res, format: fmtSel, zoom };
+    const optionKey = JSON.stringify(options);
+    if (cached.current?.doc === d && cached.current.options === optionKey) return;
+    const generation = draftGeneration.current;
+    const media = Object.entries(d.media).map(([id]) => {
+      const blob = blobs.current.get(id);
+      if (!blob) throw new Error("Missing media");
+      return [id, blob] as [string, Blob];
+    });
+    setDraftStatus("Saving…");
+    try {
+      await saveBrowserDraft({ version: 1, doc: d, options }, media);
+      if (generation !== draftGeneration.current) return;
+      cached.current = { doc: d, options: optionKey };
+      setDraftError(null);
+      setDraftStatus(S.current.doc === d ? "Saved to browser" : "Saving…");
+    } catch {
+      if (generation !== draftGeneration.current) return;
+      setDraftStatus("Autosave failed");
+      setDraftError("Browser storage is full or unavailable. Save a .clipline file to keep your edits.");
+    }
+  }, [draftReady, res, fmtSel, zoom]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    const key = JSON.stringify({ res, format: fmtSel, zoom });
+    if (cached.current?.doc === doc && cached.current.options === key) return;
+    setDraftStatus("Saving…");
+    draftTimer.current = setTimeout(() => { void persistDraft(); }, 700);
+    return () => { if (draftTimer.current) clearTimeout(draftTimer.current); };
+  }, [doc, res, fmtSel, zoom, draftReady, persistDraft]);
+
+  useEffect(() => {
+    const flush = () => { if (document.visibilityState === "hidden") void persistDraft(); };
+    window.addEventListener("pagehide", persistDraft);
+    document.addEventListener("visibilitychange", flush);
+    return () => { window.removeEventListener("pagehide", persistDraft); document.removeEventListener("visibilitychange", flush); };
+  }, [persistDraft]);
+
+  const startFresh = async () => {
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    draftGeneration.current += 1;
+    setNewOpen(false);
+    setDraftReady(false);
+    setDraftLoading(true);
+    try {
+      await clearBrowserDraft();
+      setPlaying(false);
+      els.current.forEach(({ el }) => { el.pause(); el.removeAttribute("src"); el.load(); });
+      els.current.clear(); imgs.current.clear(); frames.current.clear();
+      urls.current.forEach((url) => URL.revokeObjectURL(url));
+      urls.current.clear(); blobs.current.clear();
+      hist.current = { past: [], future: [], cur: EMPTY, applying: true };
+      saved.current = EMPTY;
+      cached.current = { doc: EMPTY, options: JSON.stringify({ res, format: fmtSel, zoom }) };
+      setDoc(EMPTY); setSel(null); setT(0);
+      setDraftError(null); setDraftStatus("No draft yet");
+      setDraftReady(true);
+    } catch {
+      setDraftError("The browser draft could not be cleared. Your current edit has been kept.");
+      setDraftStatus("Autosave unavailable");
+    } finally { setDraftLoading(false); }
   };
 
   const addFiles = async (files: FileList | null) => {
@@ -676,6 +794,7 @@ export function VideoEditor() {
       els.current.forEach((e) => { e.el.pause(); e.el.removeAttribute("src"); e.el.load(); });
       els.current.clear();
       imgs.current.clear();
+      frames.current.clear();
       urls.current.forEach((u) => URL.revokeObjectURL(u));
       urls.current.clear();
       blobs.current.clear();
@@ -740,7 +859,7 @@ export function VideoEditor() {
     const isTyping = (el: HTMLElement) =>
       (el.tagName === "INPUT" && ["text", "number", "search"].includes((el as HTMLInputElement).type)) || el.tagName === "TEXTAREA" || el.isContentEditable;
     const onKey = (e: KeyboardEvent) => {
-      if (helpOpen) return;
+      if (helpOpen || newOpen || draftLoading) return;
       const el = e.target as HTMLElement;
       const typing = isTyping(el);
       const mod = e.ctrlKey || e.metaKey;
@@ -772,7 +891,7 @@ export function VideoEditor() {
 
   useEffect(() => {
     const h = (e: BeforeUnloadEvent) => {
-      if (S.current.items.length && S.current.doc !== saved.current) { e.preventDefault(); e.returnValue = ""; }
+      if (S.current.items.length && S.current.doc !== saved.current && S.current.doc !== cached.current?.doc) { e.preventDefault(); e.returnValue = ""; }
     };
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
@@ -798,7 +917,7 @@ export function VideoEditor() {
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden text-foreground">
+    <fieldset disabled={draftLoading} className="relative flex h-screen min-w-0 flex-col overflow-hidden border-0 p-0 text-foreground">
       <header className="glass flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 lg:h-14 lg:flex-nowrap lg:px-4">
         <div className="mr-1 flex items-center gap-2 text-lg font-bold">
           <img src="/icon-192.png" alt="" className="h-8 w-8 shrink-0 rounded-md" /> Clipline
@@ -809,6 +928,8 @@ export function VideoEditor() {
         <input ref={projInput} type="file" accept=".clipline,.cutline" hidden onChange={(e) => { openProject(e.target.files?.[0]); e.target.value = ""; }} />
         <Button variant="outline" size="sm" onClick={() => projInput.current?.click()} title="Open a saved .clipline or legacy .cutline project (Ctrl+O)"><FolderOpen />Open .clipline</Button>
         <Button variant="ghost" size="sm" onClick={() => setHelpOpen(true)} title="Clipline help"><CircleHelp />Help</Button>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setNewOpen(true)} disabled={exporting !== null || draftLoading} aria-label="New project" title="New project — clear browser draft"><Plus /></Button>
+        <span role="status" className="text-xs text-muted-foreground">{draftStatus}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <button onClick={saveProject} disabled={!items.length} className={btn} title="Save project (Ctrl+S)"><Save className="h-4 w-4" /><span className="hidden md:inline">Save</span>{items.length > 0 && doc !== saved.current && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}</button>
           <select value={res} onChange={(e) => setRes(e.target.value as ResKey)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm">
@@ -825,6 +946,13 @@ export function VideoEditor() {
           </button>
         </div>
       </header>
+      {draftError && <div role="alert" className="border-b bg-destructive/15 px-3 py-2 text-xs text-destructive">{draftError}</div>}
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Start a new project?</DialogTitle><DialogDescription>This removes the current browser draft and its cached media. Download a .clipline file first if you want to keep this edit.</DialogDescription></DialogHeader>
+          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setNewOpen(false)}>Cancel</Button><Button variant="destructive" onClick={() => void startFresh()}>Start fresh</Button></div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
         <DialogContent className="max-h-[85dvh] w-[calc(100%-2rem)] overflow-y-auto rounded-lg">
@@ -837,7 +965,7 @@ export function VideoEditor() {
               <h3 className="font-semibold">Media and project files</h3>
               <p className="text-muted-foreground"><strong className="text-foreground">Import media</strong> adds videos, photos or audio to your timeline.</p>
               <p className="text-muted-foreground"><strong className="text-foreground">Open .clipline</strong> restores a saved edit, including its media and settings. Older .cutline projects also work.</p>
-              <p className="text-muted-foreground"><strong className="text-foreground">Save</strong> downloads an editable .clipline project. <strong className="text-foreground">Export</strong> creates a finished video. Save your project before closing or refreshing.</p>
+              <p className="text-muted-foreground"><strong className="text-foreground">Save</strong> downloads an editable .clipline project. <strong className="text-foreground">Export</strong> creates a finished video. Edits and media autosave in this browser and restore when you return. Clearing browser data removes the draft; save a file for a permanent backup. <strong className="text-foreground">New project</strong> clears the browser draft.</p>
             </section>
             <section className="space-y-1">
               <h3 className="font-semibold">Editing and text glow</h3>
@@ -1072,6 +1200,7 @@ export function VideoEditor() {
           </div>
         </div>
       </section>
-    </div>
+      {draftLoading && <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/90 text-sm text-muted-foreground">{draftStatus}</div>}
+    </fieldset>
   );
 }
