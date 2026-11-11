@@ -1,7 +1,7 @@
 import { interpolate, type Keyframe } from "./keyframe-easing";
 
 type Animated = { base: Record<string, number>; kf: Record<string, Keyframe[]> };
-export function toggleMasterKeyframe<T extends Animated>(item: T, properties: string[], defaults: Record<string, number>, time: number, tolerance = 1 / 60): T {
+export function toggleMasterKeyframe<T extends Animated>(item: T, properties: string[], defaults: Record<string, number>, time: number, tolerance = 1 / 60): Omit<T, "base" | "kf"> & Animated {
   const remove = properties.every((p) => item.kf[p]?.some((k) => Math.abs(k.t - time) <= tolerance));
   const base = { ...item.base }, kf = { ...item.kf };
   for (const p of properties) {

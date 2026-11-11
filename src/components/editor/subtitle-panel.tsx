@@ -13,6 +13,11 @@ export function SubtitlePanel({ cues, style, enabled, time, dimensions, onChange
   const [format, setFormat] = useState<"srt" | "vtt" | "ass">("srt");
   const [error, setError] = useState("");
   const update = (id: string, patch: Partial<SubCue>) => onChange({ subtitles: cues.map((c) => c.id === id ? { ...c, ...patch } : c) });
+  const resetCue = (id: string) => onChange({ subtitles: cues.map((c) => {
+    if (c.id !== id) return c;
+    const { bold: _bold, italic: _italic, underline: _underline, color: _color, ...plain } = c;
+    return plain;
+  }) });
   const exportFile = () => {
     const text = format === "srt" ? toSrt(cues) : format === "vtt" ? toVtt(cues) : toAss(cues, style, ...dimensions);
     const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
@@ -36,7 +41,7 @@ export function SubtitlePanel({ cues, style, enabled, time, dimensions, onChange
         <div className="flex items-center justify-between"><Button size="sm" variant="ghost" className="h-6 px-1 font-mono text-xs" onClick={() => onSeek(cue.start)}>#{index + 1}</Button><Button size="icon" variant="ghost" className="h-6 w-6" aria-label={`Delete subtitle ${index + 1}`} onClick={() => onChange({ subtitles: cues.filter((c) => c.id !== cue.id) })}><Trash2 /></Button></div>
         <div className="grid grid-cols-2 gap-2">{(['start', 'end'] as const).map((key) => <label key={key} className="text-xs text-muted-foreground capitalize">{key} (s)<input aria-label={`Subtitle ${index + 1} ${key}`} type="number" min={key === 'start' ? 0 : cue.start + 0.01} max={key === 'start' ? cue.end - 0.01 : undefined} step={0.01} value={cue[key]} onChange={(e) => { if (e.target.value !== '') { const v = +e.target.value; if (v >= 0 && (key === 'start' ? v < cue.end : v > cue.start)) update(cue.id, { [key]: v }); } }} className="mt-1 h-8 w-full rounded-md border bg-secondary px-2 text-foreground" /></label>)}</div>
         <textarea aria-label={`Subtitle ${index + 1} text`} value={cue.text} onChange={(e) => update(cue.id, { text: e.target.value })} className="min-h-16 w-full resize-y rounded-md border bg-secondary px-2 py-1" />
-        <div className="flex items-center gap-1">{([['bold', Bold, 'bold'], ['italic', Italic, 'italic'], ['underline', Underline, 'underline']] as const).map(([key, Icon, label]) => <Button key={key} size="icon" className="h-7 w-7" variant={(cue[key] ?? style[key]) ? 'default' : 'secondary'} aria-label={`Subtitle ${index + 1} ${label}`} aria-pressed={cue[key] ?? style[key]} title={label} onClick={() => update(cue.id, { [key]: !(cue[key] ?? style[key]) })}><Icon /></Button>)}<input aria-label={`Subtitle ${index + 1} color`} type="color" value={cue.color ?? style.color} onChange={(e) => update(cue.id, { color: e.target.value })} className="ml-auto h-7 w-9 cursor-pointer rounded border bg-secondary" /><Button variant="ghost" size="sm" className="h-7 px-1 text-xs" onClick={() => update(cue.id, { bold: undefined, italic: undefined, underline: undefined, color: undefined })}>Reset</Button></div>
+        <div className="flex flex-wrap items-center gap-1">{([['bold', Bold, 'bold'], ['italic', Italic, 'italic'], ['underline', Underline, 'underline']] as const).map(([key, Icon, label]) => <Button key={key} size="icon" className="h-7 w-7" variant={(cue[key] ?? style[key]) ? 'default' : 'secondary'} aria-label={`Subtitle ${index + 1} ${label}`} aria-pressed={cue[key] ?? style[key]} title={label} onClick={() => update(cue.id, { [key]: !(cue[key] ?? style[key]) })}><Icon /></Button>)}<input aria-label={`Subtitle ${index + 1} color`} type="color" value={cue.color ?? style.color} onChange={(e) => update(cue.id, { color: e.target.value })} className="ml-auto h-7 w-9 cursor-pointer rounded border bg-secondary" /><Button variant="ghost" size="sm" className="h-7 px-1 text-xs" onClick={() => resetCue(cue.id)}>Reset</Button></div>
       </div>)}
     </div>
   </div>;
