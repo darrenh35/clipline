@@ -1008,8 +1008,8 @@ export function VideoEditor() {
         </DialogContent>
       </Dialog>
 
-      <div className="flex min-h-0 flex-1">
-        <main ref={stageRef} className="flex min-w-0 flex-1 items-center justify-center bg-stage/60 p-4">
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+        <main ref={stageRef} className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-stage/60 p-4">
           <div className="relative shrink-0" style={{ width: previewWidth, aspectRatio: `${W} / ${H}` }}>
             <canvas ref={canvasRef} width={W} height={H} onPointerDown={(e) => previewDrag(e, "move")}
               aria-label="Video preview" className="block h-full w-full touch-none rounded-md shadow-2xl cursor-move" />
@@ -1031,13 +1031,13 @@ export function VideoEditor() {
                 <Maximize2 />
               </Button>
             </>}
-            {!items.length && (
+            {!items.length && !doc.subtitles?.length && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-center text-sm text-muted-foreground">Import video, photos or audio to start editing</div>
             )}
           </div>
         </main>
 
-        <aside className="glass w-72 max-w-[48vw] shrink-0 space-y-3 overflow-y-auto border-l p-3 text-sm">
+        <aside className="glass h-52 w-full shrink-0 space-y-3 overflow-y-auto border-t p-3 text-sm sm:h-auto sm:w-72 sm:border-l sm:border-t-0">
           <div className="flex gap-1 border-b pb-2" role="tablist" aria-label="Editor panels">
             <Button role="tab" aria-selected={panel === "properties"} variant={panel === "properties" ? "secondary" : "ghost"} size="sm" onClick={() => setPanel("properties")}>Properties</Button>
             <Button role="tab" aria-selected={panel === "subtitles"} variant={panel === "subtitles" ? "secondary" : "ghost"} size="sm" onClick={() => setPanel("subtitles")}>Subtitles</Button>

@@ -8,8 +8,8 @@ describe("master keyframe", () => {
   });
   it("preserves existing outgoing easing when filling a partial keyframe", () => {
     const result = toggleMasterKeyframe({ base: {}, kf: { x: [{ t: 1, v: 30, easing: "sine-in" as const }] } }, ["x", "scale"], { scale: 100 }, 1);
-    expect(result.kf.x?.[0]?.easing).toBe("sine-in");
-    expect(result.kf.scale?.[0]?.v).toBe(100);
+    expect(result.kf['x']?.[0]?.easing).toBe("sine-in");
+    expect(result.kf['scale']?.[0]?.v).toBe(100);
   });
   it("removes all keys together without resetting their values", () => {
     const result = toggleMasterKeyframe({ base: {}, kf: { x: [{ t: 1, v: 30 }], scale: [{ t: 1, v: 120 }] } }, ["x", "scale"], {}, 1);
