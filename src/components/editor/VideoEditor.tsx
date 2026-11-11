@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Search, Play, Pause, Undo2, Redo2, Scissors, Trash2, Upload, Type, FolderOpen, Save, RotateCw, Maximize2, Minus, Plus, Film, Image as ImageIcon, Music, CircleHelp, Sparkles,
+  Search, Play, Pause, Undo2, Redo2, Scissors, Trash2, Upload, Type, FolderOpen, Save, RotateCw, Maximize2, Minus, Plus, Film, Image as ImageIcon, Music, CircleHelp, Captions, Diamond, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -9,18 +9,23 @@ import { EASINGS, interpolate, type Easing, type Keyframe } from "./keyframe-eas
 import { detectKind, guessMime, pickExportMime, resolveDuration, type ExportFormat } from "./media-utils";
 import { resizedScale } from "./preview-transform";
 import { clearBrowserDraft, loadBrowserDraft, saveBrowserDraft } from "./browser-draft";
+import { toggleMasterKeyframe } from "./master-keyframe";
+import { DEFAULT_SUB_STYLE, type SubCue, type SubStyle } from "./subtitles";
+import { drawSubtitles } from "./subtitle-canvas";
+import { TextStyleControls } from "./text-style-controls";
+import { SubtitlePanel } from "./subtitle-panel";
 
 type Kind = "video" | "image" | "audio" | "text";
 type Trans = "none" | "fade" | "slide" | "wipe" | "zoom" | "rise";
 type KF = Keyframe;
-type TextStyle = { text: string; size: number; font: string; bold: boolean; italic: boolean; color: string; stroke: string; strokeW: number; shadow: boolean; bg: boolean; glow?: boolean; glowColor?: string; glowStrength?: number };
+type TextStyle = { text: string; size: number; font: string; bold: boolean; italic: boolean; color: string; stroke: string; strokeW: number; shadow: boolean; bg: boolean; glow?: boolean; glowColor?: string; glowStrength?: number; underline?: boolean; bgColor?: string };
 type Item = {
   id: string; kind: Kind; track: number; start: number; dur: number; name: string; mediaId?: string;
   inP: number; speed: number; base: Record<string, number>; kf: Record<string, KF[]>;
   tIn: Trans; tOut: Trans; tInD: number; tOutD: number; style?: TextStyle;
 };
 type Media = { id: string; kind: "video" | "image" | "audio"; name: string; duration: number; type: string };
-type Doc = { items: Item[]; media: Record<string, Media> };
+type Doc = { items: Item[]; media: Record<string, Media>; subtitles?: SubCue[]; subStyle?: SubStyle; burnSubtitles?: boolean };
 type DraftOptions = { res: ResKey; format: ExportFormat; zoom: number };
 
 const PROPS = {
@@ -103,6 +108,7 @@ export function VideoEditor() {
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [panel, setPanel] = useState<"properties" | "subtitles">("properties");
   const [newOpen, setNewOpen] = useState(false);
   const [draftLoading, setDraftLoading] = useState(true);
   const [draftReady, setDraftReady] = useState(false);
@@ -123,7 +129,7 @@ export function VideoEditor() {
   const [bad, setBad] = useState(false);
   const [, bump] = useState(0);
 
-  const total = items.reduce((a, i) => Math.max(a, i.start + i.dur), 0);
+  const total = Math.max(items.reduce((a, i) => Math.max(a, i.start + i.dur), 0), ...(doc.subtitles ?? []).map((c) => c.end));
   const tracks = trackCount(items);
 
   const stageRef = useRef<HTMLDivElement>(null);
@@ -202,7 +208,8 @@ export function VideoEditor() {
   const draw = useCallback(() => {
     const cv = canvasRef.current;
     if (!cv) return;
-    const ctx = cv.getContext("2d")!;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
     const { items } = S.current;
     const t = S.current.time;
     const W = cv.width, H = cv.height;
@@ -225,6 +232,11 @@ export function VideoEditor() {
       ctx.scale(k, k);
       if (it.kind === "text" && it.style) {
         const st = it.style;
+        if (st.text.includes("\n")) {
+          ctx.translate(-W / 2, 0);
+          drawSubtitles(ctx, [{ id: it.id, start: 0, end: Infinity, text: st.text }], { ...DEFAULT_SUB_STYLE, ...st, underline: !!st.underline, outline: st.stroke, outlineW: st.strokeW, box: st.bg, boxColor: st.bgColor ?? DEFAULT_SUB_STYLE.boxColor, marginV: 100 }, 0, W, H);
+          ctx.restore(); continue;
+        }
         const px = (st.size / 100) * H;
         ctx.font = `${st.italic ? "italic " : ""}${st.bold ? 700 : 400} ${px}px "${st.font}", sans-serif`;
         ctx.textAlign = "center";
@@ -232,7 +244,7 @@ export function VideoEditor() {
         ctx.lineJoin = "round";
         if (st.bg) {
           const w = ctx.measureText(st.text).width;
-          ctx.fillStyle = "rgba(0,0,0,0.6)";
+          ctx.fillStyle = st.bgColor ?? "rgba(0,0,0,0.6)";
           ctx.beginPath();
           ctx.roundRect(-w / 2 - px * 0.4, -px * 0.7, w + px * 0.8, px * 1.4, px * 0.2);
           ctx.fill();
@@ -257,6 +269,7 @@ export function VideoEditor() {
         }
         ctx.fillStyle = st.color;
         ctx.fillText(st.text, 0, 0);
+        if (st.underline) { const w = ctx.measureText(st.text).width; ctx.fillRect(-w / 2, px * 0.45, w, px * 0.05); }
       } else {
         let src: CanvasImageSource | undefined, w = 0, h = 0;
         if (it.kind === "image") {
@@ -287,6 +300,8 @@ export function VideoEditor() {
       }
       ctx.restore();
     }
+    const d = S.current.doc;
+    if (d.burnSubtitles !== false) drawSubtitles(ctx, d.subtitles ?? [], d.subStyle ?? DEFAULT_SUB_STYLE, t, W, H);
   }, []);
 
   const redraw = () => { if (!S.current.playing) draw(); };
@@ -346,15 +361,15 @@ export function VideoEditor() {
   };
 
   useEffect(() => {
-    const fams = new Set(items.filter((i) => i.style).map((i) => i.style!.font));
+    const fams = new Set([...items.flatMap((i) => i.style ? [i.style.font] : []), (doc.subStyle ?? DEFAULT_SUB_STYLE).font]);
     Promise.all([...fams].map((f) => document.fonts.load(`700 40px "${f}"`).catch(() => null))).then(() => redraw());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [items, doc.subStyle]);
 
   useEffect(() => {
     if (!playing) { sync(time, false); draw(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [time, playing, items, res]);
+  }, [time, playing, doc, res]);
 
   useEffect(() => {
     if (!playing) return;
@@ -559,6 +574,7 @@ export function VideoEditor() {
     });
     setDoc((d) => ({ ...d, items: [...next, it] }));
     setSel(it.id);
+    setPanel("properties");
   };
 
   // ---------- edit ops ----------
@@ -590,22 +606,14 @@ export function VideoEditor() {
       return { ...i, kf: { ...i.kf, [p]: [...rest, { t: r, v, easing: existing?.easing ?? previous?.easing ?? "linear" }].sort((a, b) => a.t - b.t) } };
     });
   };
-  const toggleKf = (it: Item, p: Prop) => {
-    const r = clamp(S.current.time - it.start, 0, it.dur);
-    const cur = val(it, p, S.current.time);
-    updItem(it.id, (i) => {
-      const ks = i.kf[p] ?? [];
-      const has = ks.some((k) => Math.abs(k.t - r) <= 0.5 / FPS);
-      if (has) {
-        const rest = ks.filter((k) => Math.abs(k.t - r) > 0.5 / FPS);
-        return { ...i, kf: { ...i.kf, [p]: rest }, base: rest.length ? i.base : { ...i.base, [p]: cur } };
-      }
-      return { ...i, kf: { ...i.kf, [p]: [...ks, { t: r, v: cur, easing: ks.filter((k) => k.t <= r).at(-1)?.easing ?? "linear" }].sort((a, b) => a.t - b.t) } };
-    });
+  const masterKeyframe = () => {
+    const item = S.current.items.find((i) => i.id === sel);
+    if (!item || S.current.time < item.start || S.current.time > item.start + item.dur) return;
+    updItem(item.id, (i) => toggleMasterKeyframe(i, KIND_PROPS[i.kind], Object.fromEntries(Object.entries(PROPS).map(([p, d]) => [p, d.def])), S.current.time - i.start));
   };
   const setSpeed = (it: Item, s: number) =>
     updItem(it.id, (i) => ({ ...i, speed: s, dur: (i.dur * i.speed) / s, kf: shiftKf(i.kf, 0, i.speed / s) }));
-  const setStyle = (it: Item, patch: Partial<TextStyle>) => updItem(it.id, (i) => ({ ...i, style: { ...i.style!, ...patch } }));
+  const setStyle = (it: Item, patch: Partial<TextStyle>) => updItem(it.id, (i) => i.style ? ({ ...i, style: { ...i.style, ...patch } }) : i);
 
   // ---------- timeline drag ----------
   const startDrag = (e: React.MouseEvent, it: Item, mode: "move" | "l" | "r") => {
@@ -900,6 +908,14 @@ export function VideoEditor() {
   // ---------- render ----------
   const selItem = items.find((i) => i.id === sel);
   const [W, H] = RES[res];
+  const keyTimes = selItem ? [...new Set(Object.values(selItem.kf).flat().map((k) => k.t))].sort((a, b) => a - b) : [];
+  const relativeTime = selItem ? time - selItem.start : 0;
+  const keyInRange = !!selItem && relativeTime >= 0 && relativeTime <= selItem.dur;
+  const masterOn = !!selItem && KIND_PROPS[selItem.kind].every((p) => selItem.kf[p]?.some((k) => Math.abs(k.t - relativeTime) <= 0.5 / FPS));
+  const previousKey = keyTimes.filter((t) => t < relativeTime - 0.5 / FPS).at(-1);
+  const nextKey = keyTimes.find((t) => t > relativeTime + 0.5 / FPS);
+  const outgoingTime = keyTimes.filter((t) => t <= relativeTime + 0.5 / FPS).at(-1) ?? keyTimes[0];
+  const outgoingKey = selItem ? Object.values(selItem.kf).flat().find((k) => k.t === outgoingTime) : undefined;
   const selection = selItem && selItem.kind !== "audio" && time >= selItem.start && time < selItem.start + selItem.dur && !playing && exporting === null ? previewBounds(selItem) : null;
   const previewWidth = Math.min(stageSize.w, stageSize.h * W / H);
   const rotateAngle = (selection?.rotation ?? 0) * Math.PI / 180;
@@ -923,7 +939,8 @@ export function VideoEditor() {
           <img src="/icon-192.png" alt="" className="h-8 w-8 shrink-0 rounded-md" /> Clipline
         </div>
         <Button variant="secondary" size="sm" onClick={() => fileInput.current?.click()} title="Import videos, photos or audio into your edit"><Upload />Import media</Button>
-        <button onClick={addText} className={btn} title="Add text"><Type className="h-4 w-4" /><span className="hidden md:inline">Text</span></button>
+        <Button onClick={addText} variant="secondary" size="sm" title="Add text"><Type /><span className="hidden md:inline">Text</span></Button>
+        <Button onClick={() => setPanel("subtitles")} variant={panel === "subtitles" ? "default" : "secondary"} size="sm"><Captions />Subtitles</Button>
         <input ref={fileInput} type="file" accept="video/*,image/*,audio/*" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
         <input ref={projInput} type="file" accept=".clipline,.cutline" hidden onChange={(e) => { openProject(e.target.files?.[0]); e.target.value = ""; }} />
         <Button variant="outline" size="sm" onClick={() => projInput.current?.click()} title="Open a saved .clipline or legacy .cutline project (Ctrl+O)"><FolderOpen />Open .clipline</Button>
@@ -931,7 +948,7 @@ export function VideoEditor() {
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setNewOpen(true)} disabled={exporting !== null || draftLoading} aria-label="New project" title="New project — clear browser draft"><Plus /></Button>
         <span role="status" className="text-xs text-muted-foreground">{draftStatus}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <button onClick={saveProject} disabled={!items.length} className={btn} title="Save project (Ctrl+S)"><Save className="h-4 w-4" /><span className="hidden md:inline">Save</span>{items.length > 0 && doc !== saved.current && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}</button>
+          <button onClick={saveProject} disabled={!items.length && !doc.subtitles?.length} className={btn} title="Save project (Ctrl+S)"><Save className="h-4 w-4" /><span className="hidden md:inline">Save</span>{items.length > 0 && doc !== saved.current && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}</button>
           <select value={res} onChange={(e) => setRes(e.target.value as ResKey)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm">
             <option value="1080p">1080p</option>
             <option value="720p">720p</option>
@@ -971,7 +988,7 @@ export function VideoEditor() {
               <h3 className="font-semibold">Editing and text glow</h3>
               <p className="text-muted-foreground">Drag timeline clips to move them, their edges to trim, or up and down to change tracks. Select a clip to change its properties.</p>
               <p className="text-muted-foreground">While paused, drag text, video or photos in the preview to move them. Drag the rotation button below the selection to rotate; hold Shift to snap. Drag the resize button outward to enlarge or inward to shrink.</p>
-              <p className="text-muted-foreground">Select text and turn on Glow in Properties, then choose its color and strength. Add keyframes with the diamond beside a property and choose easing to shape its movement.</p>
+              <p className="text-muted-foreground">Select text and turn on Glow in Properties, then choose its color and strength. Use the diamond above the timeline to key all properties at once. Change several properties or drag the preview at a new time to animate them, and choose easing to shape movement. The arrows jump between keyframes. The Subtitles tab adds timed captions, burns them into exported videos, and exports SRT, VTT or styled ASS files.</p>
             </section>
             <section className="space-y-2">
               <h3 className="font-semibold">Keyboard shortcuts</h3>
@@ -991,8 +1008,8 @@ export function VideoEditor() {
         </DialogContent>
       </Dialog>
 
-      <div className="flex min-h-0 flex-1">
-        <main ref={stageRef} className="flex min-w-0 flex-1 items-center justify-center bg-stage/60 p-4">
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+        <main ref={stageRef} className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-stage/60 p-4">
           <div className="relative shrink-0" style={{ width: previewWidth, aspectRatio: `${W} / ${H}` }}>
             <canvas ref={canvasRef} width={W} height={H} onPointerDown={(e) => previewDrag(e, "move")}
               aria-label="Video preview" className="block h-full w-full touch-none rounded-md shadow-2xl cursor-move" />
@@ -1014,14 +1031,18 @@ export function VideoEditor() {
                 <Maximize2 />
               </Button>
             </>}
-            {!items.length && (
+            {!items.length && !doc.subtitles?.length && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-center text-sm text-muted-foreground">Import video, photos or audio to start editing</div>
             )}
           </div>
         </main>
 
-        <aside className="glass w-72 shrink-0 space-y-3 overflow-y-auto border-l p-4 text-sm">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Properties</h3>
+        <aside className="glass h-52 w-full shrink-0 space-y-3 overflow-y-auto border-t p-3 text-sm sm:h-auto sm:w-72 sm:border-l sm:border-t-0">
+          <div className="flex gap-1 border-b pb-2" role="tablist" aria-label="Editor panels">
+            <Button role="tab" aria-selected={panel === "properties"} variant={panel === "properties" ? "secondary" : "ghost"} size="sm" onClick={() => setPanel("properties")}>Properties</Button>
+            <Button role="tab" aria-selected={panel === "subtitles"} variant={panel === "subtitles" ? "secondary" : "ghost"} size="sm" onClick={() => setPanel("subtitles")}>Subtitles</Button>
+          </div>
+          {panel === "subtitles" ? <SubtitlePanel cues={doc.subtitles ?? []} style={doc.subStyle ?? DEFAULT_SUB_STYLE} enabled={doc.burnSubtitles !== false} time={time} dimensions={RES[res]} onChange={(patch) => setDoc((d) => ({ ...d, ...patch }))} onSeek={(t) => { setPlaying(false); setT(t); }} /> : <>
           {!selItem && <p className="text-muted-foreground">Select something on the timeline. Drag items to move them, drag their edges to trim, and drag up or down to change track.</p>}
           {selItem && (
             <>
@@ -1029,38 +1050,12 @@ export function VideoEditor() {
               <p className="font-mono text-xs text-muted-foreground">{fmt(selItem.start)} → {fmt(selItem.start + selItem.dur)}</p>
 
               {selItem.style && (
-                <div className="space-y-3 rounded-lg border p-3">
-                  <input aria-label="Text content" value={selItem.style.text} onChange={(e) => setStyle(selItem, { text: e.target.value })} className="h-9 w-full rounded-md border bg-secondary/70 px-2" />
-                  <label className="block">Font
-                    <select value={selItem.style.font} onChange={(e) => setStyle(selItem, { font: e.target.value })} className={field} style={{ fontFamily: selItem.style.font }}>
-                      {FONTS.map((f) => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}
-                    </select>
-                  </label>
-                  <div className="flex gap-1">
-                    {([["bold", "B"], ["italic", "I"], ["shadow", "Shadow"], ["bg", "Box"]] as const).map(([k, l]) => {
-                      const on = selItem.style![k];
-                      return <button key={k} onClick={() => setStyle(selItem, { [k]: !on })} className={`h-8 flex-1 rounded-md text-xs ${on ? "bg-primary text-primary-foreground" : "bg-secondary/70 hover:bg-accent"}`}>{l}</button>;
-                    })}
-                  </div>
-                  <Button variant={selItem.style.glow ? "default" : "secondary"} size="sm" className="w-full" aria-pressed={!!selItem.style.glow} onClick={() => setStyle(selItem, { glow: !selItem.style?.glow })}>
-                    <Sparkles />Glow
-                  </Button>
-                  {selItem.style.glow && <div className="space-y-2">
-                    <label className="block">Glow color<input aria-label="Glow color" type="color" value={selItem.style.glowColor ?? selItem.style.color} onChange={(e) => setStyle(selItem, { glowColor: e.target.value })} className="mt-1 h-9 w-full cursor-pointer rounded-md border bg-secondary" /></label>
-                    <label className="block">Glow strength <span className="font-mono text-muted-foreground">{selItem.style.glowStrength ?? 50}%</span>
-                      <input aria-label="Glow strength" type="number" min={1} max={100} value={selItem.style.glowStrength ?? 50} onChange={(e) => { if (e.target.value !== "") setStyle(selItem, { glowStrength: clamp(+e.target.value, 1, 100) }); }} className={field} />
-                    </label>
-                  </div>}
-                  <div className="flex gap-2">
-                    <label className="flex-1">Fill<input type="color" value={selItem.style.color} onChange={(e) => setStyle(selItem, { color: e.target.value })} className="mt-1 h-9 w-full cursor-pointer rounded-md border bg-secondary" /></label>
-                    <label className="flex-1">Stroke<input type="color" value={selItem.style.stroke} onChange={(e) => setStyle(selItem, { stroke: e.target.value })} className="mt-1 h-9 w-full cursor-pointer rounded-md border bg-secondary" /></label>
-                  </div>
-                  <label className="block">Stroke width
-                    <input aria-label="Stroke width" type="number" min={0} max={40} value={selItem.style.strokeW} onChange={(e) => { if (e.target.value !== "") setStyle(selItem, { strokeW: clamp(+e.target.value, 0, 40) }); }} className={field} />
-                  </label>
-                  <label className="block">Font size
-                    <input aria-label="Font size" type="number" min={2} max={30} step={0.5} value={selItem.style.size} onChange={(e) => { if (e.target.value !== "") setStyle(selItem, { size: clamp(+e.target.value, 2, 30) }); }} className={field} />
-                  </label>
+                <div className="space-y-3 border-y py-3">
+                  <textarea aria-label="Text content" value={selItem.style.text} onChange={(e) => setStyle(selItem, { text: e.target.value })} className="min-h-24 w-full resize-y rounded-md border bg-secondary/70 px-2 py-2" />
+                  <TextStyleControls glow style={{ ...DEFAULT_SUB_STYLE, ...selItem.style, underline: !!selItem.style.underline, outline: selItem.style.stroke, outlineW: selItem.style.strokeW, box: selItem.style.bg, boxColor: selItem.style.bgColor ?? DEFAULT_SUB_STYLE.boxColor }} onChange={(patch) => {
+                    const { outline, outlineW, box, boxColor, marginV: _margin, ...rest } = patch;
+                    setStyle(selItem, { ...rest, ...(outline !== undefined ? { stroke: outline } : {}), ...(outlineW !== undefined ? { strokeW: outlineW } : {}), ...(box !== undefined ? { bg: box } : {}), ...(boxColor !== undefined ? { bgColor: boxColor } : {}) });
+                  }} />
                 </div>
               )}
 
@@ -1091,54 +1086,33 @@ export function VideoEditor() {
                 })}
               </div>
 
-              <div className="space-y-2 rounded-lg border p-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Animate</h4>
-                  <span className="text-[10px] text-muted-foreground">◇ = add keyframe</span>
-                </div>
-                {KIND_PROPS[selItem.kind].map((p) => {
-                  const d = PROPS[p];
-                  const ks = selItem.kf[p] ?? [];
-                  const r = time - selItem.start;
-                  const inRange = r >= 0 && r <= selItem.dur;
-                  const on = ks.some((k) => Math.abs(k.t - r) <= 0.5 / FPS);
-                  const outgoing = ks.filter((k) => k.t <= r + 0.5 / FPS).at(-1) ?? ks[0];
-                  const v = val(selItem, p, time);
-                  return (
-                    <div key={p}>
-                      <div className="flex items-center justify-between">
-                        <span>{d.label}</span>
-                        <span className="flex items-center gap-1.5">
-                          <span className="font-mono text-xs text-muted-foreground">{Math.round(v)}{d.unit}</span>
-                          <button onClick={() => toggleKf(selItem, p)} disabled={!inRange} aria-label={`${on ? "Remove" : "Add"} ${d.label} keyframe`} title={on ? "Remove keyframe" : "Add keyframe here"}
-                            className={`w-4 text-sm leading-none disabled:opacity-30 ${on ? "text-primary" : ks.length ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{on ? "◆" : "◇"}</button>
-                        </span>
-                      </div>
-                      <input aria-label={d.label} type="number" min={d.min} max={d.max} step={p === "x" || p === "y" || p === "scale" ? 0.1 : 1} value={+v.toFixed(1)} onChange={(e) => { if (e.target.value !== "") setProp(selItem, p, clamp(+e.target.value, d.min, d.max)); }} className={field} />
-                      {outgoing && <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                        Easing
-                        <select aria-label={`${d.label} easing`} value={outgoing.easing ?? "smooth"} className="h-7 min-w-0 flex-1 rounded-md border bg-secondary px-1 text-foreground"
-                          onChange={(e) => {
-                            const easing = e.target.value as Easing;
-                            updItem(selItem.id, (i) => ({ ...i, kf: { ...i.kf, [p]: (i.kf[p] ?? []).map((k) => k.t === outgoing.t ? { ...k, easing } : k) } }));
-                          }}>
-                          {EASINGS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </select>
-                      </label>}
-                    </div>
-                  );
-                })}
+              <div className="space-y-2 border-t pt-3">
+                <h4 className="text-xs font-semibold text-muted-foreground">Transform & color</h4>
+                {outgoingKey && <label className="flex items-center justify-between gap-2 text-xs">Keyframe easing
+                  <select aria-label="Keyframe easing" value={outgoingKey.easing ?? "smooth"} className="h-8 min-w-0 flex-1 rounded-md border bg-secondary px-1" onChange={(e) => {
+                    const easing = e.target.value as Easing;
+                    updItem(selItem.id, (i) => ({ ...i, kf: Object.fromEntries(Object.entries(i.kf).map(([p, keys]) => [p, keys.map((k) => Math.abs(k.t - (outgoingTime ?? -1)) <= 0.5 / FPS ? { ...k, easing } : k)])) }));
+                  }}>{EASINGS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+                </label>}
+                <div className="grid grid-cols-2 gap-2">{KIND_PROPS[selItem.kind].map((p) => {
+                  const d = PROPS[p]; const v = val(selItem, p, time);
+                  return <label key={p} className="min-w-0 text-xs text-muted-foreground">{d.label} ({d.unit})<input aria-label={d.label} type="number" min={d.min} max={d.max} step={p === "x" || p === "y" || p === "scale" ? 0.1 : 1} value={+v.toFixed(1)} onChange={(e) => { if (e.target.value !== "") setProp(selItem, p, clamp(+e.target.value, d.min, d.max)); }} className={`${field} text-foreground`} /></label>;
+                })}</div>
               </div>
 
               <button onClick={del} className="h-9 w-full rounded-md bg-destructive/15 text-destructive hover:bg-destructive/25">Delete</button>
             </>
           )}
+          </>}
         </aside>
       </div>
 
       <section className="glass flex h-64 shrink-0 flex-col border-t">
         <div className="flex h-12 shrink-0 items-center gap-2 overflow-x-auto border-b px-3">
           <div className="flex flex-1 items-center gap-1.5">
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Previous keyframe" title="Previous keyframe" disabled={previousKey === undefined} onClick={() => { if (selItem && previousKey !== undefined) { setPlaying(false); setT(selItem.start + previousKey); } }}><ChevronLeft /></Button>
+            <Button variant={masterOn ? "default" : "secondary"} size="icon" className="h-8 w-8 shrink-0" aria-label={masterOn ? "Remove keyframe" : "Add keyframe"} aria-pressed={masterOn} title="Key all properties" disabled={!keyInRange || playing || exporting !== null} onClick={masterKeyframe}><Diamond fill={masterOn ? "currentColor" : "none"} /></Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Next keyframe" title="Next keyframe" disabled={nextKey === undefined} onClick={() => { if (selItem && nextKey !== undefined) { setPlaying(false); setT(selItem.start + nextKey); } }}><ChevronRight /></Button>
             <button onClick={undo} disabled={!canUndo} className={btn} title="Undo (Ctrl+Z)"><Undo2 className="h-4 w-4" /></button>
             <button onClick={redo} disabled={!h.future.length} className={btn} title="Redo (Ctrl+Shift+Z / Ctrl+Y)"><Redo2 className="h-4 w-4" /></button>
             <button onClick={split} disabled={!items.length} className={btn} title="Split at playhead (S)"><Scissors className="h-4 w-4" /><span className="hidden lg:inline">Split</span></button>

@@ -15,3 +15,6 @@
 - Render optional text glow in the shared canvas draw pipeline and store its settings on text styles so saved projects, previews, and exports stay consistent without changing legacy text.
 - Direct preview resizing updates the existing scale property through the keyframe-aware setter; keep resize math in the shared preview-transform helper so saved edits and exports use the same transforms.
 - Browser drafts use a serialized IndexedDB transaction for document and immutable media blobs; restore before enabling edits and never overwrite a draft after a failed read, keeping autosave local and race-safe.
+- Master keyframes operate on the existing per-property keyframe arrays through a shared helper, preserving legacy animation and outgoing easing.
+- Store subtitle cues and styles in the project document, and burn them through the shared canvas renderer so autosave, project files, preview, and video export agree.
+- Share compact text styling controls between text overlays and subtitles to keep editing consistent.

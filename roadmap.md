@@ -1,4 +1,8 @@
 # Current tasks
+- [x] Add one toolbar keyframe button and previous/next navigation.
+- [x] Tidy text styling controls.
+- [x] Add editable burned-in subtitles, import, and SRT/VTT/styled ASS exports.
+- [x] Verify editing, exports, and browser restoration.
 - [x] Add browser-local autosave with automatic draft restoration and a start-fresh option.
 - [x] Verify autosave preserves real media and edits after reload.
 - [x] Show the app icon beside the browser editor name.
