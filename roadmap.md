@@ -1,4 +1,8 @@
 # Current tasks
+- [x] Add matching preview/export aspect ratios with saved-project restoration.
+- [x] Add audio waveforms that follow trimming, speed, and timeline zoom.
+- [x] Add text animation presets and editable color presets.
+- [x] Verify saved projects, video exports, and desktop/mobile editing.
 - [x] Add one toolbar keyframe button and previous/next navigation.
 - [x] Tidy text styling controls.
 - [x] Add editable burned-in subtitles, import, and SRT/VTT/styled ASS exports.

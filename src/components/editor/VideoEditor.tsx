@@ -14,9 +14,11 @@ import { DEFAULT_SUB_STYLE, type SubCue, type SubStyle } from "./subtitles";
 import { drawSubtitles } from "./subtitle-canvas";
 import { TextStyleControls } from "./text-style-controls";
 import { SubtitlePanel } from "./subtitle-panel";
+import { ASPECT_RATIOS, canvasDimensions, COLOR_PRESETS, TEXT_ANIMATIONS, revealedText, bounceScale, audioPeaks, type AspectRatio } from "./editor-presets";
+import { AudioWaveform } from "./audio-waveform";
 
 type Kind = "video" | "image" | "audio" | "text";
-type Trans = "none" | "fade" | "slide" | "wipe" | "zoom" | "rise";
+type Trans = "none" | "fade" | "slide" | "wipe" | "zoom" | "rise" | "bounce" | "typewriter";
 type KF = Keyframe;
 type TextStyle = { text: string; size: number; font: string; bold: boolean; italic: boolean; color: string; stroke: string; strokeW: number; shadow: boolean; bg: boolean; glow?: boolean; glowColor?: string; glowStrength?: number; underline?: boolean; bgColor?: string };
 type Item = {
@@ -25,7 +27,7 @@ type Item = {
   tIn: Trans; tOut: Trans; tInD: number; tOutD: number; style?: TextStyle;
 };
 type Media = { id: string; kind: "video" | "image" | "audio"; name: string; duration: number; type: string };
-type Doc = { items: Item[]; media: Record<string, Media>; subtitles?: SubCue[]; subStyle?: SubStyle; burnSubtitles?: boolean };
+type Doc = { items: Item[]; media: Record<string, Media>; aspectRatio?: AspectRatio; subtitles?: SubCue[]; subStyle?: SubStyle; burnSubtitles?: boolean };
 type DraftOptions = { res: ResKey; format: ExportFormat; zoom: number };
 
 const PROPS = {
@@ -38,10 +40,12 @@ const PROPS = {
   brightness: { label: "Brightness", min: 0, max: 200, def: 100, unit: "%" },
   contrast: { label: "Contrast", min: 0, max: 200, def: 100, unit: "%" },
   saturate: { label: "Saturation", min: 0, max: 200, def: 100, unit: "%" },
+  sepia: { label: "Warmth", min: 0, max: 100, def: 0, unit: "%" },
+  hue: { label: "Hue", min: -180, max: 180, def: 0, unit: "°" },
 } as const;
 type Prop = keyof typeof PROPS;
 const VIS: Prop[] = ["x", "y", "scale", "rotation", "opacity"];
-const GRADE: Prop[] = ["brightness", "contrast", "saturate"];
+const GRADE: Prop[] = ["brightness", "contrast", "saturate", "sepia", "hue"];
 const KIND_PROPS: Record<Kind, Prop[]> = {
   video: [...VIS, "volume", ...GRADE],
   image: [...VIS, ...GRADE],
@@ -87,6 +91,7 @@ const applyFx = (tr: Trans, p: number, isIn: boolean, W: number, H: number, s: F
   else if (tr === "slide") s.dx += (1 - e) * W * (isIn ? 1 : -1);
   else if (tr === "rise") { s.dy += (1 - e) * H * 0.12 * (isIn ? 1 : -1); s.a *= p; }
   else if (tr === "zoom") { s.k *= 0.5 + 0.5 * e; s.a *= p; }
+  else if (tr === "bounce") { s.k *= Math.max(0, bounceScale(p)); s.a *= p; }
   else if (tr === "wipe") { if (isIn) s.wr = Math.min(s.wr, p); else s.wl = Math.max(s.wl, 1 - p); }
 };
 const mkItem = (kind: Kind, extra: Partial<Item>): Item => ({
@@ -138,7 +143,10 @@ export function VideoEditor() {
     const stage = stageRef.current;
     if (!stage) return;
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) setStageSize({ w: Math.max(1, entry.contentRect.width - 96), h: Math.max(1, entry.contentRect.height - 96) });
+      if (entry) {
+        const inset = window.innerWidth < 640 ? 24 : 96;
+        setStageSize({ w: Math.max(1, entry.contentRect.width - inset), h: Math.max(1, entry.contentRect.height - inset) });
+      }
     });
     observer.observe(stage);
     return () => observer.disconnect();
@@ -152,6 +160,8 @@ export function VideoEditor() {
   const imgs = useRef(new Map<string, HTMLImageElement>());
   const urls = useRef(new Map<string, string>());
   const blobs = useRef(new Map<string, Blob>());
+  const [waveforms, setWaveforms] = useState<Record<string, number[]>>({});
+  const waveRequested = useRef(new Set<string>());
   const frames = useRef(new Map<string, { cv: HTMLCanvasElement; ctx: CanvasRenderingContext2D }>());
   const audioCtx = useRef<AudioContext | null>(null);
   const audioDest = useRef<MediaStreamAudioDestinationNode | null>(null);
@@ -205,6 +215,32 @@ export function VideoEditor() {
     return audioCtx.current;
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    let decoder: AudioContext | undefined;
+    const pending = Object.values(doc.media).filter((m) => m.kind !== "image" && !waveRequested.current.has(m.id));
+    if (!pending.length) return;
+    // Decode sequentially and keep only compact peaks, never full decoded audio.
+    const decode = async () => {
+      decoder = new AudioContext();
+      for (const media of pending) {
+        if (cancelled) break;
+        const blob = blobs.current.get(media.id);
+        if (!blob) continue;
+        waveRequested.current.add(media.id);
+        try {
+          const buffer = await decoder.decodeAudioData(await blob.arrayBuffer());
+          const peaks = audioPeaks(Array.from({ length: buffer.numberOfChannels }, (_, i) => buffer.getChannelData(i)));
+          if (!cancelled) setWaveforms((previous) => ({ ...previous, [media.id]: peaks }));
+          else waveRequested.current.delete(media.id);
+        } catch { /* Some video containers do not expose audio for decoding. Playback still works. */ }
+      }
+      await decoder.close();
+    };
+    void decode().catch(() => {});
+    return () => { cancelled = true; };
+  }, [doc.media]);
+
   const draw = useCallback(() => {
     const cv = canvasRef.current;
     if (!cv) return;
@@ -231,7 +267,8 @@ export function VideoEditor() {
       const k = (val(it, "scale", t) / 100) * s.k;
       ctx.scale(k, k);
       if (it.kind === "text" && it.style) {
-        const st = it.style;
+        const st = { ...it.style, text: it.tIn === "typewriter" || it.tOut === "typewriter" ? revealedText(it.style.text, Math.min(pin, pout)) : it.style.text };
+        if (!st.text) { ctx.restore(); continue; }
         if (st.text.includes("\n")) {
           ctx.translate(-W / 2, 0);
           drawSubtitles(ctx, [{ id: it.id, start: 0, end: Infinity, text: st.text }], { ...DEFAULT_SUB_STYLE, ...st, underline: !!st.underline, outline: st.stroke, outlineW: st.strokeW, box: st.bg, boxColor: st.bgColor ?? DEFAULT_SUB_STYLE.boxColor, marginV: 100 }, 0, W, H);
@@ -294,7 +331,7 @@ export function VideoEditor() {
         }
         if (src) {
           const f = Math.min(W / w, H / h);
-          ctx.filter = `brightness(${val(it, "brightness", t)}%) contrast(${val(it, "contrast", t)}%) saturate(${val(it, "saturate", t)}%)`;
+          ctx.filter = `brightness(${val(it, "brightness", t)}%) contrast(${val(it, "contrast", t)}%) saturate(${val(it, "saturate", t)}%) sepia(${val(it, "sepia", t)}%) hue-rotate(${val(it, "hue", t)}deg)`;
           ctx.drawImage(src, (-w * f) / 2, (-h * f) / 2, w * f, h * f);
         }
       }
@@ -503,6 +540,7 @@ export function VideoEditor() {
       els.current.clear(); imgs.current.clear(); frames.current.clear();
       urls.current.forEach((url) => URL.revokeObjectURL(url));
       urls.current.clear(); blobs.current.clear();
+      waveRequested.current.clear(); setWaveforms({});
       hist.current = { past: [], future: [], cur: EMPTY, applying: true };
       saved.current = EMPTY;
       cached.current = { doc: EMPTY, options: JSON.stringify({ res, format: fmtSel, zoom }) };
@@ -831,10 +869,13 @@ export function VideoEditor() {
   const exportVideo = async () => {
     if (!total || exporting !== null) return;
     setPlaying(false);
-    const cv = canvasRef.current!;
+    const cv = canvasRef.current;
+    if (!cv) return;
     ensureAudio();
+    const destination = audioDest.current;
+    if (!destination) return;
     const stream = cv.captureStream(30);
-    audioDest.current!.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
+    destination.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
     const mime = pickExportMime(fmtSel, (m) => MediaRecorder.isTypeSupported(m)) ?? pickExportMime("auto", (m) => MediaRecorder.isTypeSupported(m));
     if (!mime) { window.alert("This browser can't record video exports."); return; }
     const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: res === "1080p" ? 12_000_000 : 6_000_000 });
@@ -907,7 +948,8 @@ export function VideoEditor() {
 
   // ---------- render ----------
   const selItem = items.find((i) => i.id === sel);
-  const [W, H] = RES[res];
+  const aspectRatio = doc.aspectRatio ?? "16:9";
+  const [W, H] = canvasDimensions(aspectRatio, res);
   const keyTimes = selItem ? [...new Set(Object.values(selItem.kf).flat().map((k) => k.t))].sort((a, b) => a - b) : [];
   const relativeTime = selItem ? time - selItem.start : 0;
   const keyInRange = !!selItem && relativeTime >= 0 && relativeTime <= selItem.dur;
@@ -949,7 +991,10 @@ export function VideoEditor() {
         <span role="status" className="text-xs text-muted-foreground">{draftStatus}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <button onClick={saveProject} disabled={!items.length && !doc.subtitles?.length} className={btn} title="Save project (Ctrl+S)"><Save className="h-4 w-4" /><span className="hidden md:inline">Save</span>{items.length > 0 && doc !== saved.current && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}</button>
-          <select value={res} onChange={(e) => setRes(e.target.value as ResKey)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm">
+          <select aria-label="Aspect ratio" title="Canvas aspect ratio" value={aspectRatio} disabled={exporting !== null} onChange={(e) => { setPlaying(false); setDoc((d) => ({ ...d, aspectRatio: e.target.value as AspectRatio })); }} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm">
+            {ASPECT_RATIOS.map((ratio) => <option key={ratio} value={ratio}>{ratio}</option>)}
+          </select>
+          <select aria-label="Export resolution" disabled={exporting !== null} value={res} onChange={(e) => setRes(e.target.value as ResKey)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm">
             <option value="1080p">1080p</option>
             <option value="720p">720p</option>
           </select>
@@ -1042,7 +1087,7 @@ export function VideoEditor() {
             <Button role="tab" aria-selected={panel === "properties"} variant={panel === "properties" ? "secondary" : "ghost"} size="sm" onClick={() => setPanel("properties")}>Properties</Button>
             <Button role="tab" aria-selected={panel === "subtitles"} variant={panel === "subtitles" ? "secondary" : "ghost"} size="sm" onClick={() => setPanel("subtitles")}>Subtitles</Button>
           </div>
-          {panel === "subtitles" ? <SubtitlePanel cues={doc.subtitles ?? []} style={doc.subStyle ?? DEFAULT_SUB_STYLE} enabled={doc.burnSubtitles !== false} time={time} dimensions={RES[res]} onChange={(patch) => setDoc((d) => ({ ...d, ...patch }))} onSeek={(t) => { setPlaying(false); setT(t); }} /> : <>
+          {panel === "subtitles" ? <SubtitlePanel cues={doc.subtitles ?? []} style={doc.subStyle ?? DEFAULT_SUB_STYLE} enabled={doc.burnSubtitles !== false} time={time} dimensions={[W, H]} onChange={(patch) => setDoc((d) => ({ ...d, ...patch }))} onSeek={(t) => { setPlaying(false); setT(t); }} /> : <>
           {!selItem && <p className="text-muted-foreground">Select something on the timeline. Drag items to move them, drag their edges to trim, and drag up or down to change track.</p>}
           {selItem && (
             <>
@@ -1068,11 +1113,11 @@ export function VideoEditor() {
               <div className="grid grid-cols-2 gap-2">
                 {(["in", "out"] as const).map((w) => {
                   const tk = w === "in" ? "tIn" : "tOut", dk = w === "in" ? "tInD" : "tOutD";
-                  const opts = selItem.kind === "audio" ? (["none", "fade"] as Trans[]) : TRANSITIONS;
+                  const opts = selItem.kind === "audio" ? (["none", "fade"] as Trans[]) : selItem.kind === "text" ? TEXT_ANIMATIONS : TRANSITIONS;
                   return (
                     <div key={w}>
-                      <label className="block">Transition {w}
-                        <select value={selItem[tk]} onChange={(e) => updItem(selItem.id, (i) => ({ ...i, [tk]: e.target.value as Trans }))} className={`${field} capitalize`}>
+                      <label className="block">{selItem.kind === "text" ? "Animation" : "Transition"} {w}
+                        <select aria-label={`${selItem.kind === "text" ? "Animation" : "Transition"} ${w}`} value={selItem[tk]} onChange={(e) => updItem(selItem.id, (i) => ({ ...i, [tk]: e.target.value as Trans }))} className={`${field} capitalize`}>
                           {opts.map((t) => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </label>
@@ -1088,6 +1133,15 @@ export function VideoEditor() {
 
               <div className="space-y-2 border-t pt-3">
                 <h4 className="text-xs font-semibold text-muted-foreground">Transform & color</h4>
+                {(selItem.kind === "video" || selItem.kind === "image") && <label className="block text-xs text-muted-foreground">Color preset
+                  <select aria-label="Color preset" className={`${field} text-foreground`} value={COLOR_PRESETS.find((preset) => Object.entries(preset.values).every(([p, v]) => Math.abs(val(selItem, p as Prop, time) - v) < 0.1))?.id ?? "custom"} onChange={(e) => {
+                    const preset = COLOR_PRESETS.find((p) => p.id === e.target.value);
+                    if (preset) for (const [p, value] of Object.entries(preset.values)) setProp(selItem, p as Prop, value);
+                  }}>
+                    <option value="custom" disabled>Custom</option>
+                    {COLOR_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  </select>
+                </label>}
                 {outgoingKey && <label className="flex items-center justify-between gap-2 text-xs">Keyframe easing
                   <select aria-label="Keyframe easing" value={outgoingKey.easing ?? "smooth"} className="h-8 min-w-0 flex-1 rounded-md border bg-secondary px-1" onChange={(e) => {
                     const easing = e.target.value as Easing;
@@ -1153,7 +1207,8 @@ export function VideoEditor() {
                     style={{ left: it.start * zoom, width: Math.max(6, it.dur * zoom), top: it.track * TRACK_H + 4, height: TRACK_H - 8 }}>
                     {it.tIn !== "none" && <div className="pointer-events-none absolute inset-y-0 left-0 bg-gradient-to-r from-background/50 to-transparent" style={{ width: it.tInD * zoom }} />}
                     {it.tOut !== "none" && <div className="pointer-events-none absolute inset-y-0 right-0 bg-gradient-to-l from-background/50 to-transparent" style={{ width: it.tOutD * zoom }} />}
-                    <span className="pointer-events-none flex min-w-0 items-center gap-1 px-2.5">
+                    {it.mediaId && waveforms[it.mediaId] && <AudioWaveform peaks={waveforms[it.mediaId] ?? []} duration={doc.media[it.mediaId]?.duration ?? 0} offset={it.inP} speed={it.speed} clipDuration={it.dur} zoom={zoom} />}
+                    <span className={`pointer-events-none relative flex min-w-0 items-center gap-1 px-2.5 ${it.mediaId && waveforms[it.mediaId] ? "self-start pt-0.5 text-[10px]" : ""}`}>
                       <KindIcon k={it.kind} />
                       <span className="truncate">{it.style ? it.style.text : it.name}</span>
                       {it.speed !== 1 && <span className="font-mono opacity-80">{it.speed.toFixed(2)}×</span>}

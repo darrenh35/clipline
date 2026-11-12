@@ -18,3 +18,6 @@
 - Master keyframes operate on the existing per-property keyframe arrays through a shared helper, preserving legacy animation and outgoing easing.
 - Store subtitle cues and styles in the project document, and burn them through the shared canvas renderer so autosave, project files, preview, and video export agree.
 - Share compact text styling controls between text overlays and subtitles to keep editing consistent.
+- Store optional canvas aspect ratio in the document and derive even preview/export dimensions through the shared preset module; missing values retain legacy widescreen projects.
+- Generate source-time audio peaks from media blobs in the browser and map waveform display through clip offsets and speed; derived peaks never enlarge saved projects.
+- Text animation timing and color preset values use shared helpers and the existing canvas/keyframe pipeline so seeking, saved edits, and video export agree.
