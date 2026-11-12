@@ -19,7 +19,7 @@ export const COLOR_PRESETS = [
   { id: "cool", label: "Cool Cyberpunk", values: { brightness: 98, contrast: 135, saturate: 140, sepia: 12, hue: 165 } },
 ] as const;
 
-export const TEXT_ANIMATIONS = ["none", "fade", "slide", "rise", "zoom", "bounce", "typewriter"] as const;
+export const TEXT_ANIMATIONS = ["none", "fade", "slide", "rise", "zoom", "wipe", "bounce", "typewriter"] as const;
 export type TextAnimation = typeof TEXT_ANIMATIONS[number];
 
 /** Text reveal is calculated from time, not timers, so seeking and export agree. */

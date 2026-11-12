@@ -143,7 +143,10 @@ export function VideoEditor() {
     const stage = stageRef.current;
     if (!stage) return;
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) setStageSize({ w: Math.max(1, entry.contentRect.width - 96), h: Math.max(1, entry.contentRect.height - 96) });
+      if (entry) {
+        const inset = window.innerWidth < 640 ? 24 : 96;
+        setStageSize({ w: Math.max(1, entry.contentRect.width - inset), h: Math.max(1, entry.contentRect.height - inset) });
+      }
     });
     observer.observe(stage);
     return () => observer.disconnect();
@@ -867,10 +870,12 @@ export function VideoEditor() {
     if (!total || exporting !== null) return;
     setPlaying(false);
     const cv = canvasRef.current;
-    if (!cv || !audioDest.current && !ensureAudio()) return;
+    if (!cv) return;
     ensureAudio();
+    const destination = audioDest.current;
+    if (!destination) return;
     const stream = cv.captureStream(30);
-    audioDest.current!.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
+    destination.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
     const mime = pickExportMime(fmtSel, (m) => MediaRecorder.isTypeSupported(m)) ?? pickExportMime("auto", (m) => MediaRecorder.isTypeSupported(m));
     if (!mime) { window.alert("This browser can't record video exports."); return; }
     const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: res === "1080p" ? 12_000_000 : 6_000_000 });
@@ -1112,7 +1117,7 @@ export function VideoEditor() {
                   return (
                     <div key={w}>
                       <label className="block">{selItem.kind === "text" ? "Animation" : "Transition"} {w}
-                        <select value={selItem[tk]} onChange={(e) => updItem(selItem.id, (i) => ({ ...i, [tk]: e.target.value as Trans }))} className={`${field} capitalize`}>
+                        <select aria-label={`${selItem.kind === "text" ? "Animation" : "Transition"} ${w}`} value={selItem[tk]} onChange={(e) => updItem(selItem.id, (i) => ({ ...i, [tk]: e.target.value as Trans }))} className={`${field} capitalize`}>
                           {opts.map((t) => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </label>
@@ -1203,7 +1208,7 @@ export function VideoEditor() {
                     {it.tIn !== "none" && <div className="pointer-events-none absolute inset-y-0 left-0 bg-gradient-to-r from-background/50 to-transparent" style={{ width: it.tInD * zoom }} />}
                     {it.tOut !== "none" && <div className="pointer-events-none absolute inset-y-0 right-0 bg-gradient-to-l from-background/50 to-transparent" style={{ width: it.tOutD * zoom }} />}
                     {it.mediaId && waveforms[it.mediaId] && <AudioWaveform peaks={waveforms[it.mediaId] ?? []} duration={doc.media[it.mediaId]?.duration ?? 0} offset={it.inP} speed={it.speed} clipDuration={it.dur} zoom={zoom} />}
-                    <span className="pointer-events-none relative flex min-w-0 items-center gap-1 px-2.5">
+                    <span className={`pointer-events-none relative flex min-w-0 items-center gap-1 px-2.5 ${it.mediaId && waveforms[it.mediaId] ? "self-start pt-0.5 text-[10px]" : ""}`}>
                       <KindIcon k={it.kind} />
                       <span className="truncate">{it.style ? it.style.text : it.name}</span>
                       {it.speed !== 1 && <span className="font-mono opacity-80">{it.speed.toFixed(2)}×</span>}
