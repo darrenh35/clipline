@@ -1125,16 +1125,17 @@ function Editor() {
                 {(["in", "out"] as const).map((w) => {
                   const tk = w === "in" ? "tIn" : "tOut", dk = w === "in" ? "tInD" : "tOutD";
                   const opts = selItem.kind === "audio" ? (["none", "fade"] as Trans[]) : selItem.kind === "text" ? TEXT_ANIMATIONS : TRANSITIONS;
+                  const label = t(selItem.kind === "text" ? "animation" : "transition");
                   return (
-                    <div key={w}>
-                      <label className="block">{selItem.kind === "text" ? "Animation" : "Transition"} {w}
-                        <select aria-label={`${selItem.kind === "text" ? "Animation" : "Transition"} ${w}`} value={selItem[tk]} onChange={(e) => updItem(selItem.id, (i) => ({ ...i, [tk]: e.target.value as Trans }))} className={`${field} capitalize`}>
-                          {opts.map((t) => <option key={t} value={t}>{t}</option>)}
+                    <div key={w} className="min-w-0">
+                      <label className="block">{label} {t(w)}
+                        <select aria-label={`${label} ${t(w)}`} value={selItem[tk]} onChange={(e) => updItem(selItem.id, (i) => ({ ...i, [tk]: e.target.value as Trans }))} className={`${field} capitalize`}>
+                          {opts.map((option) => <option key={option} value={option}>{t(transitionKeys[option])}</option>)}
                         </select>
                       </label>
                       {selItem[tk] !== "none" && (
-                        <label className="mt-1 block text-xs text-muted-foreground">Duration (s)
-                          <input aria-label={`Transition ${w} duration`} type="number" min={0.1} max={Math.max(0.2, Math.min(3, selItem.dur))} step={0.1} value={selItem[dk]} onChange={(e) => { if (e.target.value !== "") updItem(selItem.id, (i) => ({ ...i, [dk]: clamp(+e.target.value, 0.1, Math.max(0.2, Math.min(3, i.dur))) })); }} className={field} />
+                        <label className="mt-1 block text-xs text-muted-foreground">{t("durationSeconds")}
+                          <input aria-label={`${label} ${t(w)} ${t("durationSeconds")}`} type="number" min={0.1} max={Math.max(0.2, Math.min(3, selItem.dur))} step={0.1} value={selItem[dk]} onChange={(e) => { if (e.target.value !== "") updItem(selItem.id, (i) => ({ ...i, [dk]: clamp(+e.target.value, 0.1, Math.max(0.2, Math.min(3, i.dur))) })); }} className={field} />
                         </label>
                       )}
                     </div>
@@ -1143,29 +1144,29 @@ function Editor() {
               </div>
 
               <div className="space-y-2 border-t pt-3">
-                <h4 className="text-xs font-semibold text-muted-foreground">Transform & color</h4>
-                {(selItem.kind === "video" || selItem.kind === "image") && <label className="block text-xs text-muted-foreground">Color preset
-                  <select aria-label="Color preset" className={`${field} text-foreground`} value={COLOR_PRESETS.find((preset) => Object.entries(preset.values).every(([p, v]) => Math.abs(val(selItem, p as Prop, time) - v) < 0.1))?.id ?? "custom"} onChange={(e) => {
+                <h4 className="text-xs font-semibold text-muted-foreground">{t("transformColor")}</h4>
+                {(selItem.kind === "video" || selItem.kind === "image") && <label className="block text-xs text-muted-foreground">{t("colorPreset")}
+                  <select aria-label={t("colorPreset")} className={`${field} text-foreground`} value={COLOR_PRESETS.find((preset) => Object.entries(preset.values).every(([p, v]) => Math.abs(val(selItem, p as Prop, time) - v) < 0.1))?.id ?? "custom"} onChange={(e) => {
                     const preset = COLOR_PRESETS.find((p) => p.id === e.target.value);
                     if (preset) for (const [p, value] of Object.entries(preset.values)) setProp(selItem, p as Prop, value);
                   }}>
-                    <option value="custom" disabled>Custom</option>
-                    {COLOR_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    <option value="custom" disabled>{t("custom")}</option>
+                    {COLOR_PRESETS.map((p) => <option key={p.id} value={p.id}>{t(presetKeys[p.id])}</option>)}
                   </select>
                 </label>}
-                {outgoingKey && <label className="flex items-center justify-between gap-2 text-xs">Keyframe easing
-                  <select aria-label="Keyframe easing" value={outgoingKey.easing ?? "smooth"} className="h-8 min-w-0 flex-1 rounded-md border bg-secondary px-1" onChange={(e) => {
+                {outgoingKey && <label className="flex items-center justify-between gap-2 text-xs">{t("keyframeEasing")}
+                  <select aria-label={t("keyframeEasing")} value={outgoingKey.easing ?? "smooth"} className="h-8 min-w-0 flex-1 rounded-md border bg-secondary px-1" onChange={(e) => {
                     const easing = e.target.value as Easing;
                     updItem(selItem.id, (i) => ({ ...i, kf: Object.fromEntries(Object.entries(i.kf).map(([p, keys]) => [p, keys.map((k) => Math.abs(k.t - (outgoingTime ?? -1)) <= 0.5 / FPS ? { ...k, easing } : k)])) }));
-                  }}>{EASINGS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+                  }}>{EASINGS.map((option) => <option key={option.value} value={option.value}>{t(easingKeys[option.value])}</option>)}</select>
                 </label>}
                 <div className="grid grid-cols-2 gap-2">{KIND_PROPS[selItem.kind].map((p) => {
                   const d = PROPS[p]; const v = val(selItem, p, time);
-                  return <label key={p} className="min-w-0 text-xs text-muted-foreground">{d.label} ({d.unit})<input aria-label={d.label} type="number" min={d.min} max={d.max} step={p === "x" || p === "y" || p === "scale" ? 0.1 : 1} value={+v.toFixed(1)} onChange={(e) => { if (e.target.value !== "") setProp(selItem, p, clamp(+e.target.value, d.min, d.max)); }} className={`${field} text-foreground`} /></label>;
+                  return <label key={p} className="min-w-0 text-xs text-muted-foreground">{t(d.label)} ({d.unit})<input aria-label={t(d.label)} type="number" min={d.min} max={d.max} step={p === "x" || p === "y" || p === "scale" ? 0.1 : 1} value={+v.toFixed(1)} onChange={(e) => { if (e.target.value !== "") setProp(selItem, p, clamp(+e.target.value, d.min, d.max)); }} className={`${field} text-foreground`} /></label>;
                 })}</div>
               </div>
 
-              <button onClick={del} className="h-9 w-full rounded-md bg-destructive/15 text-destructive hover:bg-destructive/25">Delete</button>
+              <button onClick={del} className="h-9 w-full rounded-md bg-destructive/15 text-destructive hover:bg-destructive/25">{t("delete")}</button>
             </>
           )}
           </>}
