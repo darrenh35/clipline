@@ -1028,36 +1028,36 @@ function Editor() {
       </Dialog>
 
       <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
-        <DialogContent className="max-h-[85dvh] w-[calc(100%-2rem)] overflow-y-auto rounded-lg">
+        <DialogContent className="max-h-[85dvh] w-[calc(100%-2rem)] overflow-y-auto overflow-x-hidden rounded-lg">
           <DialogHeader>
-            <DialogTitle>Clipline help</DialogTitle>
-            <DialogDescription>Editing, project files and keyboard shortcuts.</DialogDescription>
+            <DialogTitle>{t("cliplineHelp")}</DialogTitle>
+            <DialogDescription>{t("helpDescription")}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 text-sm">
+          <div className="space-y-4 break-words text-sm">
             <section className="space-y-1">
-              <h3 className="font-semibold">Media and project files</h3>
-              <p className="text-muted-foreground"><strong className="text-foreground">Import media</strong> adds videos, photos or audio to your timeline.</p>
-              <p className="text-muted-foreground"><strong className="text-foreground">Open .clipline</strong> restores a saved edit, including its media and settings. Older .cutline projects also work.</p>
-              <p className="text-muted-foreground"><strong className="text-foreground">Save</strong> downloads an editable .clipline project. <strong className="text-foreground">Export</strong> creates a finished video. Edits and media autosave in this browser and restore when you return. Clearing browser data removes the draft; save a file for a permanent backup. <strong className="text-foreground">New project</strong> clears the browser draft.</p>
+              <h3 className="font-semibold">{t("mediaProjectFiles")}</h3>
+              <p className="text-muted-foreground">{t("helpImportMedia")}</p>
+              <p className="text-muted-foreground">{t("helpOpenProject")}</p>
+              <p className="text-muted-foreground">{t("helpSaveExport")}</p>
             </section>
             <section className="space-y-1">
-              <h3 className="font-semibold">Editing and text glow</h3>
-              <p className="text-muted-foreground">Drag timeline clips to move them, their edges to trim, or up and down to change tracks. Select a clip to change its properties.</p>
-              <p className="text-muted-foreground">While paused, drag text, video or photos in the preview to move them. Drag the rotation button below the selection to rotate; hold Shift to snap. Drag the resize button outward to enlarge or inward to shrink.</p>
-              <p className="text-muted-foreground">Select text and turn on Glow in Properties, then choose its color and strength. Use the diamond above the timeline to key all properties at once. Change several properties or drag the preview at a new time to animate them, and choose easing to shape movement. The arrows jump between keyframes. The Subtitles tab adds timed captions, burns them into exported videos, and exports SRT, VTT or styled ASS files.</p>
+              <h3 className="font-semibold">{t("editingTextGlow")}</h3>
+              <p className="text-muted-foreground">{t("helpTimeline")}</p>
+              <p className="text-muted-foreground">{t("helpPreview")}</p>
+              <p className="text-muted-foreground">{t("helpGlowKeyframes")}</p>
             </section>
             <section className="space-y-2">
-              <h3 className="font-semibold">Keyboard shortcuts</h3>
-              <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-muted-foreground">
-                <dt>Play / pause</dt><dd className="font-mono">Space</dd>
-                <dt>Step a frame (paused)</dt><dd className="font-mono">, / .</dd>
-                <dt>Split at playhead</dt><dd className="font-mono">S</dd>
-                <dt>Delete selection</dt><dd className="font-mono">Delete</dd>
-                <dt>Undo</dt><dd className="font-mono">Ctrl/⌘ Z</dd>
-                <dt>Redo</dt><dd className="font-mono">Ctrl/⌘ Shift Z</dd>
-                <dt>Redo (alternative)</dt><dd className="font-mono">Ctrl/⌘ Y</dd>
-                <dt>Save project</dt><dd className="font-mono">Ctrl/⌘ S</dd>
-                <dt>Open project</dt><dd className="font-mono">Ctrl/⌘ O</dd>
+              <h3 className="font-semibold">{t("keyboardShortcuts")}</h3>
+              <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 text-muted-foreground">
+                <dt>{t("playPause")}</dt><dd className="font-mono">{t("spaceKey")}</dd>
+                <dt>{t("stepFrame")}</dt><dd className="font-mono">, / .</dd>
+                <dt>{t("splitPlayhead")}</dt><dd className="font-mono">S</dd>
+                <dt>{t("deleteSelection")}</dt><dd className="font-mono">{t("deleteKey")}</dd>
+                <dt>{t("undo")}</dt><dd className="font-mono">Ctrl/⌘ Z</dd>
+                <dt>{t("redo")}</dt><dd className="font-mono">Ctrl/⌘ Shift Z</dd>
+                <dt>{t("redoAlternative")}</dt><dd className="font-mono">Ctrl/⌘ Y</dd>
+                <dt>{t("saveProject")}</dt><dd className="font-mono">Ctrl/⌘ S</dd>
+                <dt>{t("openProject")}</dt><dd className="font-mono">Ctrl/⌘ O</dd>
               </dl>
             </section>
           </div>
