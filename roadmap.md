@@ -1,4 +1,7 @@
 # Current tasks
+- [ ] Replace the ambiguous new-project plus icon with a clear project-creation symbol.
+- [ ] Translate the complete editor into Spanish, French, Simplified Chinese, and Japanese with a persistent language picker.
+- [ ] Verify translation coverage and all languages at desktop and narrow widths without overflow.
 - [x] Add matching preview/export aspect ratios with saved-project restoration.
 - [x] Add audio waveforms that follow trimming, speed, and timeline zoom.
 - [x] Add text animation presets and editable color presets.
