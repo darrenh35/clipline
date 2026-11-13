@@ -601,15 +601,15 @@ function Editor() {
   };
 
   const addText = () => {
-    const t = S.current.time;
+    const at = S.current.time;
     const list = [...S.current.items];
     const n = trackCount(list);
     let track = -1;
-    for (let k = 0; k < n; k++) if (list.some((o) => o.track === k) && free(list, k, t, 3, ["text"])) { track = k; break; }
+    for (let k = 0; k < n; k++) if (list.some((o) => o.track === k) && free(list, k, at, 3, ["text"])) { track = k; break; }
     let next = list;
     if (track < 0) { next = list.map((o) => ({ ...o, track: o.track + 1 })); track = 0; }
     const it = mkItem("text", {
-      track, start: t, dur: 3, name: t("text"),
+      track, start: at, dur: 3, name: t("text"),
       style: { text: t("defaultText"), size: 9, font: "Space Grotesk", bold: true, italic: false, color: "#ffffff", stroke: "#000000", strokeW: 12, shadow: true, bg: false },
     });
     setDoc((d) => ({ ...d, items: [...next, it] }));
@@ -1241,7 +1241,11 @@ function Editor() {
           </div>
         </div>
       </section>
-      {draftLoading && <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/90 text-sm text-muted-foreground">{draftStatus}</div>}
+      {draftLoading && <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/90 text-sm text-muted-foreground">{t(draftStatus)}</div>}
     </fieldset>
   );
+}
+
+export function VideoEditor() {
+  return <I18nProvider><Editor /></I18nProvider>;
 }
