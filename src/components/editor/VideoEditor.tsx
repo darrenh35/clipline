@@ -1068,7 +1068,7 @@ function Editor() {
         <main ref={stageRef} className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-stage/60 p-4">
           <div className="relative shrink-0" style={{ width: previewWidth, aspectRatio: `${W} / ${H}` }}>
             <canvas ref={canvasRef} width={W} height={H} onPointerDown={(e) => previewDrag(e, "move")}
-              aria-label="Video preview" className="block h-full w-full touch-none rounded-md shadow-2xl cursor-move" />
+              aria-label={t("videoPreview")} className="block h-full w-full touch-none rounded-md shadow-2xl cursor-move" />
             {selection && <>
               <svg viewBox={`0 0 ${W} ${H}`} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible text-primary" aria-hidden="true">
                 <g transform={`translate(${selection.x} ${selection.y}) rotate(${selection.rotation})`}>
@@ -1076,38 +1076,38 @@ function Editor() {
                   <line x1={0} x2={0} y1={selection.h / 2} y2={handleDistance} stroke="currentColor" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
                 </g>
               </svg>
-              <Button size="icon" variant="outline" aria-label="Rotate selection" title="Drag to rotate" onPointerDown={(e) => previewDrag(e, "rotate")}
+              <Button size="icon" variant="outline" aria-label={t("rotateSelection")} title={t("dragRotate")} onPointerDown={(e) => previewDrag(e, "rotate")}
                 className="absolute z-10 h-7 w-7 -translate-x-1/2 -translate-y-1/2 touch-none rounded-full border-primary bg-background text-primary cursor-grab active:cursor-grabbing"
                 style={{ left: `${(selection.x - Math.sin(rotateAngle) * handleDistance) / W * 100}%`, top: `${(selection.y + Math.cos(rotateAngle) * handleDistance) / H * 100}%` }}>
                 <RotateCw />
               </Button>
-              <Button size="icon" variant="outline" aria-label="Resize selection" title="Drag to resize" onPointerDown={(e) => previewDrag(e, "resize")}
+              <Button size="icon" variant="outline" aria-label={t("resizeSelection")} title={t("dragResize")} onPointerDown={(e) => previewDrag(e, "resize")}
                 className="absolute z-10 h-7 w-7 -translate-x-1/2 -translate-y-1/2 touch-none rounded-full border-primary bg-background text-primary cursor-nwse-resize"
                 style={{ left: `${(selection.x - Math.sin(rotateAngle) * handleDistance) / W * 100 + Math.cos(rotateAngle) * 36 / previewWidth * 100}%`, top: `${(selection.y + Math.cos(rotateAngle) * handleDistance) / H * 100 + Math.sin(rotateAngle) * 36 / (previewWidth * H / W) * 100}%` }}>
                 <Maximize2 />
               </Button>
             </>}
             {!items.length && !doc.subtitles?.length && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-center text-sm text-muted-foreground">Import video, photos or audio to start editing</div>
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4 text-center text-sm text-muted-foreground">{t("emptyPreview")}</div>
             )}
           </div>
         </main>
 
         <aside className="glass h-52 w-full shrink-0 space-y-3 overflow-y-auto border-t p-3 text-sm sm:h-auto sm:w-72 sm:border-l sm:border-t-0">
-          <div className="flex gap-1 border-b pb-2" role="tablist" aria-label="Editor panels">
-            <Button role="tab" aria-selected={panel === "properties"} variant={panel === "properties" ? "secondary" : "ghost"} size="sm" onClick={() => setPanel("properties")}>Properties</Button>
-            <Button role="tab" aria-selected={panel === "subtitles"} variant={panel === "subtitles" ? "secondary" : "ghost"} size="sm" onClick={() => setPanel("subtitles")}>Subtitles</Button>
+          <div className="grid grid-cols-2 gap-1 border-b pb-2" role="tablist" aria-label={t("editorPanels")}>
+            <Button role="tab" aria-selected={panel === "properties"} variant={panel === "properties" ? "secondary" : "ghost"} size="sm" className="min-w-0 px-2" onClick={() => setPanel("properties")}>{t("properties")}</Button>
+            <Button role="tab" aria-selected={panel === "subtitles"} variant={panel === "subtitles" ? "secondary" : "ghost"} size="sm" className="min-w-0 px-2" onClick={() => setPanel("subtitles")}>{t("subtitles")}</Button>
           </div>
           {panel === "subtitles" ? <SubtitlePanel cues={doc.subtitles ?? []} style={doc.subStyle ?? DEFAULT_SUB_STYLE} enabled={doc.burnSubtitles !== false} time={time} dimensions={[W, H]} onChange={(patch) => setDoc((d) => ({ ...d, ...patch }))} onSeek={(t) => { setPlaying(false); setT(t); }} /> : <>
-          {!selItem && <p className="text-muted-foreground">Select something on the timeline. Drag items to move them, drag their edges to trim, and drag up or down to change track.</p>}
+          {!selItem && <p className="text-muted-foreground">{t("selectSomething")}</p>}
           {selItem && (
             <>
-              <p className="flex items-center gap-1.5 truncate font-medium"><KindIcon k={selItem.kind} />{selItem.kind === "text" ? "Text" : selItem.name}</p>
+              <p className="flex items-center gap-1.5 truncate font-medium"><KindIcon k={selItem.kind} />{selItem.kind === "text" ? t("text") : selItem.name}</p>
               <p className="font-mono text-xs text-muted-foreground">{fmt(selItem.start)} → {fmt(selItem.start + selItem.dur)}</p>
 
               {selItem.style && (
                 <div className="space-y-3 border-y py-3">
-                  <textarea aria-label="Text content" value={selItem.style.text} onChange={(e) => setStyle(selItem, { text: e.target.value })} className="min-h-24 w-full resize-y rounded-md border bg-secondary/70 px-2 py-2" />
+                  <textarea aria-label={t("textContent")} value={selItem.style.text} onChange={(e) => setStyle(selItem, { text: e.target.value })} className="min-h-24 w-full resize-y rounded-md border bg-secondary/70 px-2 py-2" />
                   <TextStyleControls glow style={{ ...DEFAULT_SUB_STYLE, ...selItem.style, underline: !!selItem.style.underline, outline: selItem.style.stroke, outlineW: selItem.style.strokeW, box: selItem.style.bg, boxColor: selItem.style.bgColor ?? DEFAULT_SUB_STYLE.boxColor }} onChange={(patch) => {
                     const { outline, outlineW, box, boxColor, marginV: _margin, ...rest } = patch;
                     setStyle(selItem, { ...rest, ...(outline !== undefined ? { stroke: outline } : {}), ...(outlineW !== undefined ? { strokeW: outlineW } : {}), ...(box !== undefined ? { bg: box } : {}), ...(boxColor !== undefined ? { bgColor: boxColor } : {}) });
@@ -1116,8 +1116,8 @@ function Editor() {
               )}
 
               {isMedia(selItem) && (
-                <label className="block">Speed <span className="font-mono text-muted-foreground">{selItem.speed.toFixed(2)}×</span>
-                  <input aria-label="Speed" type="number" min={0.25} max={4} step={0.05} value={selItem.speed} onChange={(e) => { if (e.target.value !== "") setSpeed(selItem, clamp(+e.target.value, 0.25, 4)); }} className={field} />
+                <label className="block">{t("speed")} <span className="font-mono text-muted-foreground">{selItem.speed.toFixed(2)}×</span>
+                  <input aria-label={t("speed")} type="number" min={0.25} max={4} step={0.05} value={selItem.speed} onChange={(e) => { if (e.target.value !== "") setSpeed(selItem, clamp(+e.target.value, 0.25, 4)); }} className={field} />
                 </label>
               )}
 
