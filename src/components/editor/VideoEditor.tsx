@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Search, Play, Pause, Undo2, Redo2, Scissors, Trash2, Upload, Type, FolderOpen, Save, RotateCw, Maximize2, Minus, Plus, Film, Image as ImageIcon, Music, CircleHelp, Captions, Diamond, ChevronLeft, ChevronRight,
+  Search, Play, Pause, Undo2, Redo2, Scissors, Trash2, Upload, Type, FolderOpen, Save, RotateCw, Maximize2, Minus, Plus, Film, Image as ImageIcon, Music, CircleHelp, Captions, Diamond, ChevronLeft, ChevronRight, FilePlus2, Languages,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { TextStyleControls } from "./text-style-controls";
 import { SubtitlePanel } from "./subtitle-panel";
 import { ASPECT_RATIOS, canvasDimensions, COLOR_PRESETS, TEXT_ANIMATIONS, revealedText, bounceScale, audioPeaks, type AspectRatio } from "./editor-presets";
 import { AudioWaveform } from "./audio-waveform";
+import { I18nProvider, LANGUAGES, useI18n, type TranslationKey } from "./i18n";
 
 type Kind = "video" | "image" | "audio" | "text";
 type Trans = "none" | "fade" | "slide" | "wipe" | "zoom" | "rise" | "bounce" | "typewriter";
@@ -31,17 +32,17 @@ type Doc = { items: Item[]; media: Record<string, Media>; aspectRatio?: AspectRa
 type DraftOptions = { res: ResKey; format: ExportFormat; zoom: number };
 
 const PROPS = {
-  x: { label: "Position X", min: -50, max: 150, def: 50, unit: "%" },
-  y: { label: "Position Y", min: -50, max: 150, def: 50, unit: "%" },
-  scale: { label: "Scale", min: 0, max: 400, def: 100, unit: "%" },
-  rotation: { label: "Rotation", min: -180, max: 180, def: 0, unit: "°" },
-  opacity: { label: "Opacity", min: 0, max: 100, def: 100, unit: "%" },
-  volume: { label: "Volume", min: 0, max: 200, def: 100, unit: "%" },
-  brightness: { label: "Brightness", min: 0, max: 200, def: 100, unit: "%" },
-  contrast: { label: "Contrast", min: 0, max: 200, def: 100, unit: "%" },
-  saturate: { label: "Saturation", min: 0, max: 200, def: 100, unit: "%" },
-  sepia: { label: "Warmth", min: 0, max: 100, def: 0, unit: "%" },
-  hue: { label: "Hue", min: -180, max: 180, def: 0, unit: "°" },
+  x: { label: "positionX", min: -50, max: 150, def: 50, unit: "%" },
+  y: { label: "positionY", min: -50, max: 150, def: 50, unit: "%" },
+  scale: { label: "scale", min: 0, max: 400, def: 100, unit: "%" },
+  rotation: { label: "rotation", min: -180, max: 180, def: 0, unit: "°" },
+  opacity: { label: "opacity", min: 0, max: 100, def: 100, unit: "%" },
+  volume: { label: "volume", min: 0, max: 200, def: 100, unit: "%" },
+  brightness: { label: "brightness", min: 0, max: 200, def: 100, unit: "%" },
+  contrast: { label: "contrast", min: 0, max: 200, def: 100, unit: "%" },
+  saturate: { label: "saturation", min: 0, max: 200, def: 100, unit: "%" },
+  sepia: { label: "warmth", min: 0, max: 100, def: 0, unit: "%" },
+  hue: { label: "hue", min: -180, max: 180, def: 0, unit: "°" },
 } as const;
 type Prop = keyof typeof PROPS;
 const VIS: Prop[] = ["x", "y", "scale", "rotation", "opacity"];
@@ -107,7 +108,8 @@ const free = (items: Item[], track: number, s: number, d: number, kinds: Kind[])
 const EMPTY: Doc = { items: [], media: {} };
 const COLOR: Record<Kind, string> = { video: "bg-clip", image: "bg-image-track", audio: "bg-audio-track", text: "bg-text-track" };
 
-export function VideoEditor() {
+function Editor() {
+  const { locale, setLocale, t } = useI18n();
   const [doc, setDoc] = useState<Doc>(EMPTY);
   const items = doc.items;
   const [time, setTime] = useState(0);
@@ -117,8 +119,8 @@ export function VideoEditor() {
   const [newOpen, setNewOpen] = useState(false);
   const [draftLoading, setDraftLoading] = useState(true);
   const [draftReady, setDraftReady] = useState(false);
-  const [draftStatus, setDraftStatus] = useState("Restoring draft…");
-  const [draftError, setDraftError] = useState<string | null>(null);
+  const [draftStatus, setDraftStatus] = useState<TranslationKey>("restoringDraft");
+  const [draftError, setDraftError] = useState<TranslationKey | null>(null);
   const cached = useRef<{ doc: Doc; options: string } | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftGeneration = useRef(0);
@@ -469,15 +471,15 @@ export function VideoEditor() {
         setFmtSel(draft.options.format);
         setZoom(draft.options.zoom);
         cached.current = { doc: draft.doc, options: JSON.stringify(draft.options) };
-        setDraftStatus("Saved to browser");
+        setDraftStatus("savedBrowser");
       } else {
         cached.current = { doc: EMPTY, options: JSON.stringify({ res: "1080p", format: "auto", zoom: Z_DEF }) };
-        setDraftStatus("No draft yet");
+        setDraftStatus("noDraft");
       }
       setDraftReady(true);
     }).catch(() => {
       if (!cancelled) {
-        setDraftStatus("Autosave unavailable");
+        setDraftStatus("autosaveUnavailable");
         setDraftError("Your previous browser draft could not be opened. Save a .clipline file to keep new edits.");
       }
     }).finally(() => { if (!cancelled) setDraftLoading(false); });
@@ -497,7 +499,7 @@ export function VideoEditor() {
       if (!blob) throw new Error("Missing media");
       return [id, blob] as [string, Blob];
     });
-    setDraftStatus("Saving…");
+    setDraftStatus("saving");
     try {
       await saveBrowserDraft({ version: 1, doc: d, options }, media);
       if (generation !== draftGeneration.current) return;
@@ -506,7 +508,7 @@ export function VideoEditor() {
       setDraftStatus(S.current.doc === d ? "Saved to browser" : "Saving…");
     } catch {
       if (generation !== draftGeneration.current) return;
-      setDraftStatus("Autosave failed");
+      setDraftStatus("autosaveFailed");
       setDraftError("Browser storage is full or unavailable. Save a .clipline file to keep your edits.");
     }
   }, [draftReady, res, fmtSel, zoom]);
@@ -515,7 +517,7 @@ export function VideoEditor() {
     if (!draftReady) return;
     const key = JSON.stringify({ res, format: fmtSel, zoom });
     if (cached.current?.doc === doc && cached.current.options === key) return;
-    setDraftStatus("Saving…");
+    setDraftStatus("saving");
     draftTimer.current = setTimeout(() => { void persistDraft(); }, 700);
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current); };
   }, [doc, res, fmtSel, zoom, draftReady, persistDraft]);
@@ -545,11 +547,11 @@ export function VideoEditor() {
       saved.current = EMPTY;
       cached.current = { doc: EMPTY, options: JSON.stringify({ res, format: fmtSel, zoom }) };
       setDoc(EMPTY); setSel(null); setT(0);
-      setDraftError(null); setDraftStatus("No draft yet");
+      setDraftError(null); setDraftStatus("noDraft");
       setDraftReady(true);
     } catch {
       setDraftError("The browser draft could not be cleared. Your current edit has been kept.");
-      setDraftStatus("Autosave unavailable");
+      setDraftStatus("autosaveUnavailable");
     } finally { setDraftLoading(false); }
   };
 
