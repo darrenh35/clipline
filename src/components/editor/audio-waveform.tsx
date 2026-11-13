@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
+import { useI18n } from "./i18n";
 
 export function AudioWaveform({ peaks, duration, offset, speed, clipDuration, zoom }: {
   peaks: number[]; duration: number; offset: number; speed: number; clipDuration: number; zoom: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const { t } = useI18n();
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas || !duration || !peaks.length) return;
@@ -23,5 +25,5 @@ export function AudioWaveform({ peaks, duration, offset, speed, clipDuration, zo
       ctx.fillRect(x, (24 - height) / 2, 2, height);
     }
   }, [peaks, duration, offset, speed, clipDuration, zoom]);
-  return <canvas ref={ref} aria-label="Audio waveform" className="pointer-events-none absolute inset-x-0 bottom-0 h-6 w-full text-primary-foreground opacity-60" />;
+  return <canvas ref={ref} aria-label={t("audioWaveform")} className="pointer-events-none absolute inset-x-0 bottom-0 h-6 w-full text-primary-foreground opacity-60" />;
 }
