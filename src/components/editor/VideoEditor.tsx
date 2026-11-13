@@ -480,7 +480,7 @@ function Editor() {
     }).catch(() => {
       if (!cancelled) {
         setDraftStatus("autosaveUnavailable");
-        setDraftError("Your previous browser draft could not be opened. Save a .clipline file to keep new edits.");
+        setDraftError("draftOpenError");
       }
     }).finally(() => { if (!cancelled) setDraftLoading(false); });
     return () => { cancelled = true; };
@@ -505,11 +505,11 @@ function Editor() {
       if (generation !== draftGeneration.current) return;
       cached.current = { doc: d, options: optionKey };
       setDraftError(null);
-      setDraftStatus(S.current.doc === d ? "Saved to browser" : "Saving…");
+      setDraftStatus(S.current.doc === d ? "savedBrowser" : "saving");
     } catch {
       if (generation !== draftGeneration.current) return;
       setDraftStatus("autosaveFailed");
-      setDraftError("Browser storage is full or unavailable. Save a .clipline file to keep your edits.");
+      setDraftError("draftSaveError");
     }
   }, [draftReady, res, fmtSel, zoom]);
 
@@ -550,7 +550,7 @@ function Editor() {
       setDraftError(null); setDraftStatus("noDraft");
       setDraftReady(true);
     } catch {
-      setDraftError("The browser draft could not be cleared. Your current edit has been kept.");
+      setDraftError("draftClearError");
       setDraftStatus("autosaveUnavailable");
     } finally { setDraftLoading(false); }
   };
@@ -597,7 +597,7 @@ function Editor() {
     }
     setDoc((d) => ({ ...d, items: list, media }));
     if (last) setSel(last);
-    if (skipped.length) window.alert(`Couldn't import: ${skipped.join(", ")}\nThis browser can't read that file format.`);
+    if (skipped.length) window.alert(`${t("couldntImport", { files: skipped.join(", ") })}\n${t("unsupportedFile")}`);
   };
 
   const addText = () => {
@@ -609,8 +609,8 @@ function Editor() {
     let next = list;
     if (track < 0) { next = list.map((o) => ({ ...o, track: o.track + 1 })); track = 0; }
     const it = mkItem("text", {
-      track, start: t, dur: 3, name: "Text",
-      style: { text: "Your text", size: 9, font: "Space Grotesk", bold: true, italic: false, color: "#ffffff", stroke: "#000000", strokeW: 12, shadow: true, bg: false },
+      track, start: t, dur: 3, name: t("text"),
+      style: { text: t("defaultText"), size: 9, font: "Space Grotesk", bold: true, italic: false, color: "#ffffff", stroke: "#000000", strokeW: 12, shadow: true, bg: false },
     });
     setDoc((d) => ({ ...d, items: [...next, it] }));
     setSel(it.id);
@@ -833,7 +833,7 @@ function Editor() {
 
   const openProject = async (f: File | undefined) => {
     if (!f) return;
-    if (S.current.items.length && S.current.doc !== saved.current && !confirm("Open another project? Unsaved changes will be lost.")) return;
+    if (S.current.items.length && S.current.doc !== saved.current && !confirm(t("openConfirm"))) return;
     try {
       const len = new DataView(await f.slice(0, 4).arrayBuffer()).getUint32(0, true);
       const head = JSON.parse(await f.slice(4, 4 + len).text()) as { app: string; doc: Doc; files: { id: string; size: number }[] };
@@ -863,7 +863,7 @@ function Editor() {
       setSel(null);
       setT(0);
     } catch {
-      alert("That file isn't a Clipline project.");
+      alert(t("invalidProject"));
     }
   };
 
@@ -879,7 +879,7 @@ function Editor() {
     const stream = cv.captureStream(30);
     destination.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
     const mime = pickExportMime(fmtSel, (m) => MediaRecorder.isTypeSupported(m)) ?? pickExportMime("auto", (m) => MediaRecorder.isTypeSupported(m));
-    if (!mime) { window.alert("This browser can't record video exports."); return; }
+    if (!mime) { window.alert(t("exportUnsupported")); return; }
     const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: res === "1080p" ? 12_000_000 : 6_000_000 });
     const chunks: Blob[] = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
@@ -969,8 +969,11 @@ function Editor() {
   const minor = step / (step === 0.25 ? 5 : 5);
   const h = hist.current;
   const canUndo = h.past.length > 0 || doc !== h.cur;
-  const btn = "inline-flex h-8 items-center gap-1.5 rounded-md bg-secondary/70 px-2.5 text-sm transition hover:bg-accent disabled:opacity-40";
+  const btn = "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-secondary/70 px-2.5 text-sm transition hover:bg-accent disabled:opacity-40";
   const field = "mt-1 h-9 w-full rounded-md border bg-secondary/70 px-2";
+  const transitionKeys: Record<Trans, TranslationKey> = { none: "transNone", fade: "transFade", slide: "transSlide", wipe: "transWipe", zoom: "transZoom", rise: "transRise", bounce: "transBounce", typewriter: "transTypewriter" };
+  const easingKeys: Record<Easing, TranslationKey> = { linear: "easingLinear", "sine-in": "easingSineIn", "sine-out": "easingSineOut", "sine-in-out": "easingSineInOut", smooth: "easingSmooth" };
+  const presetKeys: Record<(typeof COLOR_PRESETS)[number]["id"], TranslationKey> = { original: "presetOriginal", warm: "presetWarm", teal: "presetTeal", vintage: "presetVintage", noir: "presetNoir", vibrant: "presetVibrant", cool: "presetCool" };
   const KindIcon = ({ k }: { k: Kind }) => {
     const C = k === "video" ? Film : k === "image" ? ImageIcon : k === "audio" ? Music : Type;
     return <C className="h-3 w-3 shrink-0" />;
