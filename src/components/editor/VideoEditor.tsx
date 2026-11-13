@@ -981,43 +981,49 @@ function Editor() {
 
   return (
     <fieldset disabled={draftLoading} className="relative flex h-screen min-w-0 flex-col overflow-hidden border-0 p-0 text-foreground">
-      <header className="glass flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 lg:h-14 lg:flex-nowrap lg:px-4">
+      <header className="glass flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 lg:px-4">
         <div className="mr-1 flex items-center gap-2 text-lg font-bold">
           <img src="/icon-192.png" alt="" className="h-8 w-8 shrink-0 rounded-md" /> Clipline
         </div>
-        <Button variant="secondary" size="sm" onClick={() => fileInput.current?.click()} title="Import videos, photos or audio into your edit"><Upload />Import media</Button>
-        <Button onClick={addText} variant="secondary" size="sm" title="Add text"><Type /><span className="hidden md:inline">Text</span></Button>
-        <Button onClick={() => setPanel("subtitles")} variant={panel === "subtitles" ? "default" : "secondary"} size="sm"><Captions />Subtitles</Button>
+        <Button variant="secondary" size="sm" onClick={() => fileInput.current?.click()} title={t("importMediaTitle")}><Upload />{t("importMedia")}</Button>
+        <Button onClick={addText} variant="secondary" size="sm" title={t("addText")}><Type /><span className="hidden md:inline">{t("text")}</span></Button>
+        <Button onClick={() => setPanel("subtitles")} variant={panel === "subtitles" ? "default" : "secondary"} size="sm"><Captions />{t("subtitles")}</Button>
         <input ref={fileInput} type="file" accept="video/*,image/*,audio/*" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
         <input ref={projInput} type="file" accept=".clipline,.cutline" hidden onChange={(e) => { openProject(e.target.files?.[0]); e.target.value = ""; }} />
-        <Button variant="outline" size="sm" onClick={() => projInput.current?.click()} title="Open a saved .clipline or legacy .cutline project (Ctrl+O)"><FolderOpen />Open .clipline</Button>
-        <Button variant="ghost" size="sm" onClick={() => setHelpOpen(true)} title="Clipline help"><CircleHelp />Help</Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setNewOpen(true)} disabled={exporting !== null || draftLoading} aria-label="New project" title="New project — clear browser draft"><Plus /></Button>
-        <span role="status" className="text-xs text-muted-foreground">{draftStatus}</span>
+        <Button variant="outline" size="sm" onClick={() => projInput.current?.click()} title={t("openProjectTitle")}><FolderOpen />{t("openClipline")}</Button>
+        <Button variant="ghost" size="sm" onClick={() => setHelpOpen(true)} title={t("helpTitle")}><CircleHelp />{t("help")}</Button>
+        <div className="flex h-8 items-center gap-1 rounded-md border bg-secondary/70 pl-2" title={t("language")}>
+          <Languages className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <select aria-label={t("language")} value={locale} onChange={(e) => setLocale(e.target.value as typeof locale)} className="h-full w-[6.75rem] min-w-0 rounded-md bg-transparent pr-1 text-sm">
+            {LANGUAGES.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}
+          </select>
+        </div>
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setNewOpen(true)} disabled={exporting !== null || draftLoading} aria-label={t("newProject")} title={t("newProjectTitle")}><FilePlus2 /></Button>
+        <span role="status" className="min-w-0 text-xs text-muted-foreground">{t(draftStatus)}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <button onClick={saveProject} disabled={!items.length && !doc.subtitles?.length} className={btn} title="Save project (Ctrl+S)"><Save className="h-4 w-4" /><span className="hidden md:inline">Save</span>{items.length > 0 && doc !== saved.current && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}</button>
-          <select aria-label="Aspect ratio" title="Canvas aspect ratio" value={aspectRatio} disabled={exporting !== null} onChange={(e) => { setPlaying(false); setDoc((d) => ({ ...d, aspectRatio: e.target.value as AspectRatio })); }} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm">
+          <button onClick={saveProject} disabled={!items.length && !doc.subtitles?.length} className={btn} title={t("saveProjectTitle")}><Save className="h-4 w-4" /><span className="hidden md:inline">{t("save")}</span>{items.length > 0 && doc !== saved.current && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}</button>
+          <select aria-label={t("aspectRatio")} title={t("canvasAspectRatio")} value={aspectRatio} disabled={exporting !== null} onChange={(e) => { setPlaying(false); setDoc((d) => ({ ...d, aspectRatio: e.target.value as AspectRatio })); }} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm">
             {ASPECT_RATIOS.map((ratio) => <option key={ratio} value={ratio}>{ratio}</option>)}
           </select>
-          <select aria-label="Export resolution" disabled={exporting !== null} value={res} onChange={(e) => setRes(e.target.value as ResKey)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm">
+          <select aria-label={t("exportResolution")} disabled={exporting !== null} value={res} onChange={(e) => setRes(e.target.value as ResKey)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm">
             <option value="1080p">1080p</option>
             <option value="720p">720p</option>
           </select>
-          <select value={fmtSel} onChange={(e) => setFmtSel(e.target.value as ExportFormat)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm" title="Export format">
-            <option value="auto">Auto</option>
-            <option value="mp4" disabled={!canMp4}>MP4{canMp4 ? "" : " (unsupported)"}</option>
+          <select aria-label={t("exportFormat")} value={fmtSel} onChange={(e) => setFmtSel(e.target.value as ExportFormat)} className="h-8 rounded-md border bg-secondary/70 px-2 text-sm" title={t("exportFormat")}>
+            <option value="auto">{t("auto")}</option>
+            <option value="mp4" disabled={!canMp4}>MP4{canMp4 ? "" : ` (${t("unsupported")})`}</option>
             <option value="webm">WebM</option>
           </select>
-          <button onClick={exportVideo} disabled={!total || exporting !== null} className="h-8 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-40">
-            {exporting !== null ? `Exporting ${exporting}%` : "Export"}
+          <button onClick={exportVideo} disabled={!total || exporting !== null} className="h-8 shrink-0 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-40">
+            {exporting !== null ? t("exporting", { progress: exporting }) : t("export")}
           </button>
         </div>
       </header>
-      {draftError && <div role="alert" className="border-b bg-destructive/15 px-3 py-2 text-xs text-destructive">{draftError}</div>}
+      {draftError && <div role="alert" className="border-b bg-destructive/15 px-3 py-2 text-xs text-destructive">{t(draftError)}</div>}
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Start a new project?</DialogTitle><DialogDescription>This removes the current browser draft and its cached media. Download a .clipline file first if you want to keep this edit.</DialogDescription></DialogHeader>
-          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setNewOpen(false)}>Cancel</Button><Button variant="destructive" onClick={() => void startFresh()}>Start fresh</Button></div>
+          <DialogHeader><DialogTitle>{t("startNewProject")}</DialogTitle><DialogDescription>{t("newProjectDescription")}</DialogDescription></DialogHeader>
+          <div className="flex flex-wrap justify-end gap-2"><Button variant="outline" onClick={() => setNewOpen(false)}>{t("cancel")}</Button><Button variant="destructive" onClick={() => void startFresh()}>{t("startFresh")}</Button></div>
         </DialogContent>
       </Dialog>
 
