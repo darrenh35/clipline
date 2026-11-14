@@ -1225,9 +1225,9 @@ function Editor() {
                       <span className="truncate">{it.style ? it.style.text : it.name}</span>
                       {it.speed !== 1 && <span className="font-mono opacity-80">{it.speed.toFixed(2)}×</span>}
                     </span>
-                    {kts.map((t) => (
-                      <span key={t} onMouseDown={(e) => { e.stopPropagation(); setT(it.start + t); setSel(it.id); }}
-                        className="absolute bottom-0 -translate-x-1/2 cursor-pointer text-[9px] leading-none text-foreground" style={{ left: t * zoom }} title={t("jumpKeyframe")}>◆</span>
+                    {kts.map((kt) => (
+                      <span key={kt} onMouseDown={(e) => { e.stopPropagation(); setT(it.start + kt); setSel(it.id); }}
+                        className="absolute bottom-0 -translate-x-1/2 cursor-pointer text-[9px] leading-none text-foreground" style={{ left: kt * zoom }} title={t("jumpKeyframe")}>◆</span>
                     ))}
                     <div onMouseDown={(e) => startDrag(e, it, "l")} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize rounded-l-md group-hover:bg-foreground/40" />
                     <div onMouseDown={(e) => startDrag(e, it, "r")} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize rounded-r-md group-hover:bg-foreground/40" />
