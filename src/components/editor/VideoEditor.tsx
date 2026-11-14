@@ -555,7 +555,13 @@ function Editor() {
     } finally { setDraftLoading(false); }
   };
 
-  const addFiles = async (files: FileList | null) => {
+  const [loadingSample, setLoadingSample] = useState(false);
+  const loadSample = async () => {
+    setLoadingSample(true);
+    try { const blob = await (await fetch("/sample-clip.mp4")).blob(); await addFiles([new File([blob], "sample-clip.mp4", { type: "video/mp4" })]); }
+    finally { setLoadingSample(false); }
+  };
+  const addFiles = async (files: FileList | File[] | null) => {
     if (!files) return;
     ensureAudio();
     const list = [...S.current.items];
@@ -1088,7 +1094,7 @@ function Editor() {
               </Button>
             </>}
             {!items.length && !doc.subtitles?.length && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4 text-center text-sm text-muted-foreground">{t("emptyPreview")}</div>
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 text-center text-sm text-muted-foreground"><span>{t("emptyPreview")}</span><div className="pointer-events-auto flex flex-wrap justify-center gap-2"><Button size="sm" onClick={() => fileInput.current?.click()}><Upload />{t("importMedia")}</Button><Button size="sm" variant="secondary" disabled={loadingSample} onClick={loadSample}><Film />{t("trySample")}</Button></div></div>
             )}
           </div>
         </main>
