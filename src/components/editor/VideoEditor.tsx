@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Search, Play, Pause, Undo2, Redo2, Scissors, Trash2, Upload, Type, FolderOpen, Save, RotateCw, Maximize2, Minus, Plus, Film, Image as ImageIcon, Music, CircleHelp, Captions, Diamond, ChevronLeft, ChevronRight, FilePlus2, Languages,
+  Search, Play, Pause, Undo2, Redo2, Scissors, Trash2, Upload, Type, FolderOpen, Save, RotateCw, Maximize2, Minus, Plus, Film, Image as ImageIcon, Music, CircleHelp, Captions, Diamond, ChevronLeft, ChevronRight, FilePlus2, Languages, FlipHorizontal2, FlipVertical2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ type TextStyle = { text: string; size: number; font: string; bold: boolean; ital
 type Item = {
   id: string; kind: Kind; track: number; start: number; dur: number; name: string; mediaId?: string;
   inP: number; speed: number; base: Record<string, number>; kf: Record<string, KF[]>;
-  tIn: Trans; tOut: Trans; tInD: number; tOutD: number; style?: TextStyle;
+  tIn: Trans; tOut: Trans; tInD: number; tOutD: number; style?: TextStyle; flipH?: boolean; flipV?: boolean;
 };
 type Media = { id: string; kind: "video" | "image" | "audio"; name: string; duration: number; type: string };
 type Doc = { items: Item[]; media: Record<string, Media>; aspectRatio?: AspectRatio; subtitles?: SubCue[]; subStyle?: SubStyle; burnSubtitles?: boolean };
@@ -267,7 +267,7 @@ function Editor() {
       ctx.translate((val(it, "x", t) / 100) * W + s.dx, (val(it, "y", t) / 100) * H + s.dy);
       ctx.rotate((val(it, "rotation", t) * Math.PI) / 180);
       const k = (val(it, "scale", t) / 100) * s.k;
-      ctx.scale(k, k);
+      ctx.scale(it.flipH ? -k : k, it.flipV ? -k : k);
       if (it.kind === "text" && it.style) {
         const st = { ...it.style, text: it.tIn === "typewriter" || it.tOut === "typewriter" ? revealedText(it.style.text, Math.min(pin, pout)) : it.style.text };
         if (!st.text) { ctx.restore(); continue; }
@@ -1151,6 +1151,10 @@ function Editor() {
 
               <div className="space-y-2 border-t pt-3">
                 <h4 className="text-xs font-semibold text-muted-foreground">{t("transformColor")}</h4>
+                {selItem.kind !== "audio" && <div className="flex gap-2">
+                  {(["flipH", "flipV"] as const).map((f) => { const I = f === "flipH" ? FlipHorizontal2 : FlipVertical2; return (
+                    <button key={f} type="button" aria-pressed={!!selItem[f]} onClick={() => updItem(selItem.id, (i) => ({ ...i, [f]: !i[f] }))} className={`${btn} flex-1 justify-center ${selItem[f] ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""}`}><I className="h-4 w-4" />{t(f === "flipH" ? "flipHorizontal" : "flipVertical")}</button>); })}
+                </div>}
                 {(selItem.kind === "video" || selItem.kind === "image") && <label className="block text-xs text-muted-foreground">{t("colorPreset")}
                   <select aria-label={t("colorPreset")} className={`${field} text-foreground`} value={COLOR_PRESETS.find((preset) => Object.entries(preset.values).every(([p, v]) => Math.abs(val(selItem, p as Prop, time) - v) < 0.1))?.id ?? "custom"} onChange={(e) => {
                     const preset = COLOR_PRESETS.find((p) => p.id === e.target.value);
