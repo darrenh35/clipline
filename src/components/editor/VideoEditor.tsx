@@ -1176,26 +1176,26 @@ function Editor() {
       <section className="glass flex h-64 shrink-0 flex-col border-t">
         <div className="flex h-12 shrink-0 items-center gap-2 overflow-x-auto border-b px-3">
           <div className="flex flex-1 items-center gap-1.5">
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Previous keyframe" title="Previous keyframe" disabled={previousKey === undefined} onClick={() => { if (selItem && previousKey !== undefined) { setPlaying(false); setT(selItem.start + previousKey); } }}><ChevronLeft /></Button>
-            <Button variant={masterOn ? "default" : "secondary"} size="icon" className="h-8 w-8 shrink-0" aria-label={masterOn ? "Remove keyframe" : "Add keyframe"} aria-pressed={masterOn} title="Key all properties" disabled={!keyInRange || playing || exporting !== null} onClick={masterKeyframe}><Diamond fill={masterOn ? "currentColor" : "none"} /></Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Next keyframe" title="Next keyframe" disabled={nextKey === undefined} onClick={() => { if (selItem && nextKey !== undefined) { setPlaying(false); setT(selItem.start + nextKey); } }}><ChevronRight /></Button>
-            <button onClick={undo} disabled={!canUndo} className={btn} title="Undo (Ctrl+Z)"><Undo2 className="h-4 w-4" /></button>
-            <button onClick={redo} disabled={!h.future.length} className={btn} title="Redo (Ctrl+Shift+Z / Ctrl+Y)"><Redo2 className="h-4 w-4" /></button>
-            <button onClick={split} disabled={!items.length} className={btn} title="Split at playhead (S)"><Scissors className="h-4 w-4" /><span className="hidden lg:inline">Split</span></button>
-            <button onClick={del} disabled={!sel} className={btn} title="Delete"><Trash2 className="h-4 w-4" /><span className="hidden lg:inline">Delete</span></button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={t("previousKeyframe")} title={t("previousKeyframe")} disabled={previousKey === undefined} onClick={() => { if (selItem && previousKey !== undefined) { setPlaying(false); setT(selItem.start + previousKey); } }}><ChevronLeft /></Button>
+            <Button variant={masterOn ? "default" : "secondary"} size="icon" className="h-8 w-8 shrink-0" aria-label={masterOn ? t("removeKeyframe") : t("addKeyframe")} aria-pressed={masterOn} title={t("keyAllProperties")} disabled={!keyInRange || playing || exporting !== null} onClick={masterKeyframe}><Diamond fill={masterOn ? "currentColor" : "none"} /></Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={t("nextKeyframe")} title={t("nextKeyframe")} disabled={nextKey === undefined} onClick={() => { if (selItem && nextKey !== undefined) { setPlaying(false); setT(selItem.start + nextKey); } }}><ChevronRight /></Button>
+            <button onClick={undo} disabled={!canUndo} className={btn} title={t("undoTitle")} aria-label={t("undo")}><Undo2 className="h-4 w-4" /></button>
+            <button onClick={redo} disabled={!h.future.length} className={btn} title={t("redoTitle")} aria-label={t("redo")}><Redo2 className="h-4 w-4" /></button>
+            <button onClick={split} disabled={!items.length} className={btn} title={t("splitTitle")} aria-label={t("split")}><Scissors className="h-4 w-4" /><span className="hidden lg:inline">{t("split")}</span></button>
+            <button onClick={del} disabled={!sel} className={btn} title={t("deleteTitle")} aria-label={t("delete")}><Trash2 className="h-4 w-4" /><span className="hidden lg:inline">{t("delete")}</span></button>
           </div>
           <div className="flex shrink-0 items-center gap-3">
             <span className="hidden w-20 text-right font-mono text-xs text-muted-foreground sm:inline">{fmt(time)}</span>
-            <button onClick={togglePlay} className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:opacity-90" aria-label={playing ? "Pause" : "Play"} title="Play / pause (Space)">
+            <button onClick={togglePlay} className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground transition hover:opacity-90" aria-label={playing ? t("pause") : t("play")} title={t("playPauseTitle")}>
               {playing ? <Pause className="h-4 w-4" fill="currentColor" /> : <Play className="ml-0.5 h-4 w-4" fill="currentColor" />}
             </button>
             <span className="hidden w-20 font-mono text-xs text-muted-foreground sm:inline">{fmt(total)}</span>
           </div>
           <div className="flex flex-1 items-center justify-end gap-2 text-xs text-muted-foreground">
-            <Search className="h-4 w-4 shrink-0" aria-label="Zoom" />
-            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label="Zoom out" title="Zoom out" disabled={zoom <= Z_MIN} onClick={() => setZoom((z) => Math.max(Z_MIN, z / 1.5))}><Minus /></Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label="Zoom in" title="Zoom in" disabled={zoom >= Z_MAX} onClick={() => setZoom((z) => Math.min(Z_MAX, z * 1.5))}><Plus /></Button>
-            <Button variant="secondary" size="sm" className="h-7" onClick={() => setZoom(Z_DEF)} title="Reset zoom">Reset</Button>
+            <Search className="h-4 w-4 shrink-0" aria-label={t("zoom")} />
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={t("zoomOut")} title={t("zoomOut")} disabled={zoom <= Z_MIN} onClick={() => setZoom((z) => Math.max(Z_MIN, z / 1.5))}><Minus /></Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={t("zoomIn")} title={t("zoomIn")} disabled={zoom >= Z_MAX} onClick={() => setZoom((z) => Math.min(Z_MAX, z * 1.5))}><Plus /></Button>
+            <Button variant="secondary" size="sm" className="h-7" onClick={() => setZoom(Z_DEF)} title={t("resetZoom")}>{t("reset")}</Button>
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-auto pl-3">
@@ -1225,9 +1225,9 @@ function Editor() {
                       <span className="truncate">{it.style ? it.style.text : it.name}</span>
                       {it.speed !== 1 && <span className="font-mono opacity-80">{it.speed.toFixed(2)}×</span>}
                     </span>
-                    {kts.map((t) => (
-                      <span key={t} onMouseDown={(e) => { e.stopPropagation(); setT(it.start + t); setSel(it.id); }}
-                        className="absolute bottom-0 -translate-x-1/2 cursor-pointer text-[9px] leading-none text-foreground" style={{ left: t * zoom }} title="Jump to keyframe">◆</span>
+                    {kts.map((kt) => (
+                      <span key={kt} onMouseDown={(e) => { e.stopPropagation(); setT(it.start + kt); setSel(it.id); }}
+                        className="absolute bottom-0 -translate-x-1/2 cursor-pointer text-[9px] leading-none text-foreground" style={{ left: kt * zoom }} title={t("jumpKeyframe")}>◆</span>
                     ))}
                     <div onMouseDown={(e) => startDrag(e, it, "l")} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize rounded-l-md group-hover:bg-foreground/40" />
                     <div onMouseDown={(e) => startDrag(e, it, "r")} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize rounded-r-md group-hover:bg-foreground/40" />
